@@ -20,7 +20,10 @@ export const metadata: Metadata = {
     default: 'ConcurseiroPro',
     template: '%s | ConcurseiroPro',
   },
-  description: 'Seu painel pessoal de preparação para concursos públicos.',
+  description: 'Seu painel pessoal de preparacao para concursos publicos.',
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({
