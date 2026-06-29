@@ -1,11 +1,18 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Bot } from 'lucide-react'
+import { Bot, BrainCircuit } from 'lucide-react'
 
 import { ChatForm } from '@/app/(app)/tutor/chat-form'
 import type { ChatMessage } from '@/lib/database.types'
+
+const thinkingSteps = [
+  'Cruzando seu desempenho recente...',
+  'Lendo erros, revisoes e flashcards pendentes...',
+  'Separando os pontos que mais podem virar nota...',
+  'Montando uma orientacao objetiva...',
+]
 
 export function ChatPanel({
   messages,
@@ -17,10 +24,25 @@ export function ChatPanel({
   projectTitle: string
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [isThinking, setIsThinking] = useState(false)
+  const [thinkingStep, setThinkingStep] = useState(0)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages.length])
+  }, [messages.length, isThinking, thinkingStep])
+
+  useEffect(() => {
+    if (!isThinking) {
+      setThinkingStep(0)
+      return
+    }
+
+    const interval = window.setInterval(() => {
+      setThinkingStep((current) => (current + 1) % thinkingSteps.length)
+    }, 1800)
+
+    return () => window.clearInterval(interval)
+  }, [isThinking])
 
   return (
     <div className="panel flex h-[calc(100vh-115px)] min-h-[620px] flex-col overflow-hidden">
@@ -59,11 +81,55 @@ export function ChatPanel({
               </div>
             ))
           )}
+          {isThinking ? (
+            <div className="max-w-[86%] self-start rounded-2xl rounded-bl-sm border border-atlas-400/20 bg-[linear-gradient(135deg,rgba(79,142,247,.12),rgba(15,23,42,.78))] p-4 text-sm leading-6 text-slate-200 shadow-[0_18px_60px_rgba(0,0,0,.22)]">
+              <div className="mb-3 flex items-center gap-3">
+                <div className="relative flex size-10 items-center justify-center rounded-xl bg-atlas-400/10 text-atlas-400">
+                  <span className="absolute inset-0 animate-ping rounded-xl bg-atlas-400/15" />
+                  <BrainCircuit className="relative size-5" />
+                </div>
+                <div>
+                  <p className="font-display text-sm font-bold text-white">
+                    Professor Atlas esta pensando
+                    <span className="atlas-thinking-dots" aria-hidden="true">
+                      <span>.</span>
+                      <span>.</span>
+                      <span>.</span>
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Usando o contexto real do seu concurso.
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-950/35">
+                {thinkingSteps.map((step, index) => (
+                  <div
+                    key={step}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs transition ${
+                      index === thinkingStep
+                        ? 'text-slate-100'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        index === thinkingStep
+                          ? 'bg-atlas-400 shadow-[0_0_12px_rgba(79,142,247,.85)]'
+                          : 'bg-white/10'
+                      }`}
+                    />
+                    {step}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div ref={bottomRef} />
         </div>
       </div>
 
-      <ChatForm projectId={projectId} />
+      <ChatForm projectId={projectId} onPendingChange={setIsThinking} />
     </div>
   )
 }

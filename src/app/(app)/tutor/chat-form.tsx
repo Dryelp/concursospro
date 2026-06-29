@@ -9,6 +9,20 @@ import {
   type TutorState,
 } from '@/app/(app)/tutor/actions'
 
+function PendingBridge({
+  onPendingChange,
+}: {
+  onPendingChange?: (pending: boolean) => void
+}) {
+  const { pending } = useFormStatus()
+
+  useEffect(() => {
+    onPendingChange?.(pending)
+  }, [onPendingChange, pending])
+
+  return null
+}
+
 function Button() {
   const { pending } = useFormStatus()
 
@@ -27,7 +41,13 @@ function Button() {
   )
 }
 
-export function ChatForm({ projectId }: { projectId: string }) {
+export function ChatForm({
+  projectId,
+  onPendingChange,
+}: {
+  projectId: string
+  onPendingChange?: (pending: boolean) => void
+}) {
   const [state, action] = useFormState<TutorState, FormData>(
     sendTutorMessageAction,
     {},
@@ -53,6 +73,7 @@ export function ChatForm({ projectId }: { projectId: string }) {
       className="shrink-0 border-t border-white/[0.07] bg-ink-900/95 p-3"
     >
       <input type="hidden" name="projectId" value={projectId} />
+      <PendingBridge onPendingChange={onPendingChange} />
       <div className="flex items-end gap-3">
         <textarea
           ref={inputRef}
