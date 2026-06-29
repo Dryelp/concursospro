@@ -164,7 +164,7 @@ export default async function DashboardPage({
               Plano de aprovação em movimento
             </p>
             <h2 className="max-w-2xl font-display text-3xl font-extrabold tracking-[-0.045em] text-white md:text-[40px] md:leading-[1.05]">
-              Ola, {displayName}.
+              Olá, {displayName}.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400">
               Esta e sua central de decisao para hoje: estudar o bloco certo, revisar o que esta vencendo e atacar os pontos fracos.
