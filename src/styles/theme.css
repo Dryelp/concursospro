@@ -1,0 +1,132 @@
+:root {
+  --bg: #f3efe6;
+  --surface: #fefcf7;
+  --surface-strong: #fffaf0;
+  --ink-strong: #1b2428;
+  --ink-base: #445058;
+  --ink-muted: #93a0a5;
+  --accent: #c9aa70;
+  --accent-strong: #527061;
+  --border-soft: rgba(27, 36, 40, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.08);
+  --shadow-lg: 0 26px 50px rgba(31, 38, 42, 0.08);
+  --font-body: 'Segoe UI Variable Text', 'Trebuchet MS', sans-serif;
+  --font-display: Georgia, 'Times New Roman', serif;
+  --font-mono: Consolas, 'Courier New', monospace;
+
+  color: var(--ink-base);
+  background:
+    linear-gradient(180deg, rgba(243, 239, 230, 0.96), rgba(239, 234, 223, 0.94)),
+    var(--bg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top, rgba(201, 170, 112, 0.14), transparent 24%),
+    linear-gradient(180deg, #f3efe6 0%, #ece6db 100%);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button,
+input,
+textarea,
+select {
+  border: 0;
+}
+
+h1,
+h2,
+h3,
+strong {
+  color: var(--ink-strong);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+h1 {
+  max-width: 14ch;
+  font-size: clamp(2.7rem, 5vw, 4.9rem);
+}
+
+h2 {
+  font-size: clamp(1.6rem, 2.5vw, 2.15rem);
+  margin-bottom: 10px;
+}
+
+p {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.lede {
+  max-width: 56ch;
+  margin-top: 16px;
+  font-size: 1.04rem;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

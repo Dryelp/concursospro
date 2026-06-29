@@ -1,0 +1,7 @@
+'use client'
+import { useFormState, useFormStatus } from 'react-dom'
+import { LoaderCircle, Sparkles } from 'lucide-react'
+import { generateFlashcardsAction, type FlashState } from '@/app/(app)/flashcards/actions'
+import type { Subject } from '@/lib/database.types'
+function Button(){const{pending}=useFormStatus();return <button className="button-primary" disabled={pending}>{pending?<LoaderCircle className="size-4 animate-spin"/>:<Sparkles className="size-4"/>}{pending?'Gerando...':'Gerar flashcards'}</button>}
+export function FlashGenerator({projectId,subjects}:{projectId:string;subjects:Subject[]}){const[state,action]=useFormState<FlashState,FormData>(generateFlashcardsAction,{});return <form action={action} className="panel mb-5 grid gap-4 p-5 md:grid-cols-[1fr_120px_1fr_auto] md:items-end"><input type="hidden" name="projectId" value={projectId}/><label><span className="label">Matéria</span><select className="field" name="subjectId">{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label><span className="label">Quantidade</span><select className="field" name="quantity" defaultValue="10"><option>5</option><option>10</option><option>20</option></select></label><label><span className="label">Tópico opcional</span><input className="field" name="topic"/></label><Button/>{state?.error?<p className="text-sm text-atlas-red md:col-span-4">{state.error}</p>:null}{state?.success?<p className="text-sm text-atlas-green md:col-span-4">{state.success}</p>:null}</form>}
