@@ -99,7 +99,7 @@ export function DashboardOverview({
       ]
     : [
         'Envie o edital oficial para criar um projeto real no painel.',
-        'Defina horas por semana e dias disponiveis antes de gerar o cronograma.',
+        'Defina horas por dia e dias disponiveis antes de gerar o cronograma.',
         'Use login privado para isolar seu espaco do SaaS principal.',
       ]
 

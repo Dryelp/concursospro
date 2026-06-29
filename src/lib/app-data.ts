@@ -22,7 +22,7 @@ export const appSnapshot = {
   student: {
     name: 'Seu plano premium',
     stage: 'Construcao da base',
-    weeklyHours: 18,
+    weeklyHours: 2,
     streak: 12,
   },
   project: {

@@ -38,7 +38,7 @@ type WorkspaceState = {
 
 const defaultStudyPlan: StudyPlanConfig = {
   projectTitle: '',
-  weeklyHours: 12,
+  weeklyHours: 2,
   studyDays: [1, 2, 3, 4, 5],
   focusSubject: '',
 }

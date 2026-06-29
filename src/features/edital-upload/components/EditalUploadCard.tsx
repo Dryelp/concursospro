@@ -122,15 +122,15 @@ export function EditalUploadCard({
         </label>
 
         <label className="field">
-          <span className="field__label">Horas por semana</span>
+          <span className="field__label">Horas por dia</span>
           <input
             className="field__input"
             type="number"
-            min={4}
-            max={60}
+            min={1}
+            max={12}
             value={studyPlan.weeklyHours}
             onChange={(event) =>
-              onStudyPlanChange('weeklyHours', Number.parseInt(event.target.value, 10) || 12)
+              onStudyPlanChange('weeklyHours', Number.parseInt(event.target.value, 10) || 2)
             }
           />
         </label>

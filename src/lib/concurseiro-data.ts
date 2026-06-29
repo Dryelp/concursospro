@@ -365,11 +365,12 @@ function buildTaskRows(input: {
   })
 
   const validStudyDays = sanitizeStudyDays(input.studyDays)
-  const totalSlots = clamp(validStudyDays.length * 2, 6, 14)
+  const dailyHours = clamp(Math.round(input.weeklyHours || 2), 1, 12)
+  const totalSlots = clamp(validStudyDays.length * Math.max(1, Math.ceil(dailyHours / 2)), 6, 18)
   const minutesPerPrimaryBlock = clamp(
-    Math.round((Math.max(4, input.weeklyHours) * 60) / validStudyDays.length),
-    50,
-    150,
+    Math.round((dailyHours * 60) / Math.max(1, Math.ceil(dailyHours / 2))),
+    45,
+    120,
   )
 
   const dates = buildUpcomingStudyDates(validStudyDays, totalSlots)
@@ -594,7 +595,7 @@ export async function persistIngestedEdital(input: {
   config: StudyPlanConfig
 }): Promise<PersistedWorkspace> {
   const { supabase, user, file, result, config } = input
-  const weeklyHours = clamp(Math.round(config.weeklyHours || 12), 4, 60)
+  const weeklyHours = clamp(Math.round(config.weeklyHours || 2), 1, 12)
   const studyDays = sanitizeStudyDays(config.studyDays)
   const focusSubject = normalizeWhitespace(config.focusSubject)
   const projectTitle = buildProjectTitle(result, config)
@@ -931,7 +932,7 @@ export async function saveReviewedExtraction(input: {
         extraction_status: 'ready',
         status: 'ready',
         progress: 46,
-        study_hours_per_week: clamp(Math.round(config.weeklyHours || 12), 4, 60),
+        study_hours_per_week: clamp(Math.round(config.weeklyHours || 2), 1, 12),
         study_days: sanitizeStudyDays(config.studyDays),
         focus_subject: normalizeWhitespace(config.focusSubject) || null,
         summary: reviewedExtraction.summary,
@@ -1003,7 +1004,7 @@ export async function saveReviewedExtraction(input: {
     projectId,
     userId,
     subjects: createdSubjects,
-    weeklyHours: clamp(Math.round(config.weeklyHours || 12), 4, 60),
+    weeklyHours: clamp(Math.round(config.weeklyHours || 2), 1, 12),
     studyDays: sanitizeStudyDays(config.studyDays),
     focusSubject: normalizeWhitespace(config.focusSubject),
     examDate,
