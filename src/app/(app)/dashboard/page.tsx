@@ -1,23 +1,27 @@
 import Link from 'next/link'
 import {
   ArrowRight,
+  AlertTriangle,
   BookOpen,
   CalendarDays,
   Check,
   CheckCircle2,
   ChevronRight,
   Clock3,
+  FileQuestion,
   Flame,
+  Layers3,
   Play,
   RefreshCcw,
   Sparkles,
   Target,
   TrendingUp,
+  Zap,
 } from 'lucide-react'
 
 import { toggleTaskAction } from '@/app/(app)/dashboard/actions'
 import { EmptyState } from '@/components/empty-state'
-import type { ReviewItem, StudyTask, Subject } from '@/lib/database.types'
+import type { Flashcard, MockQuestion, ReviewItem, StudyTask, Subject } from '@/lib/database.types'
 import { daysUntil, formatDate, subjectColor, todayIso } from '@/lib/format'
 import { addDaysIso } from '@/lib/study'
 import { requireWorkspace } from '@/lib/workspace'
@@ -48,7 +52,13 @@ export default async function DashboardPage({
     )
   }
 
-  const [{ data: taskRows }, { data: reviewRows }] = await Promise.all([
+  const [
+    { data: taskRows },
+    { data: reviewRows },
+    { data: profileRow },
+    { data: wrongQuestionRows },
+    { data: flashcardRows },
+  ] = await Promise.all([
     supabase
       .from('study_tasks')
       .select('*')
@@ -61,16 +71,52 @@ export default async function DashboardPage({
       .eq('project_id', project.id)
       .eq('user_id', user.id)
       .eq('status', 'active'),
+    supabase
+      .from('profiles')
+      .select('nome')
+      .eq('id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('mock_questions')
+      .select('*')
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .eq('is_correct', false)
+      .order('answered_at', { ascending: false })
+      .limit(20),
+    supabase
+      .from('flashcards')
+      .select('*')
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .eq('suspended', false)
+      .order('created_at', { ascending: false })
+      .limit(80),
   ])
 
   const tasks = (taskRows ?? []) as StudyTask[]
   const reviews = (reviewRows ?? []) as ReviewItem[]
+  const wrongQuestions = (wrongQuestionRows ?? []) as MockQuestion[]
+  const flashcards = (flashcardRows ?? []) as Flashcard[]
+  const displayName =
+    typeof profileRow?.nome === 'string' && profileRow.nome.trim()
+      ? profileRow.nome.trim().split(/\s+/)[0]
+      : user.email?.split('@')[0] ?? 'aluno'
   const today = todayIso()
   const done = tasks.filter((item) => item.status === 'done')
   const pending = tasks.filter((item) => item.status !== 'done')
   const todayTasks = tasks.filter((item) => item.scheduled_for === today)
   const todayDone = todayTasks.filter((item) => item.status === 'done')
-  const due = reviews.filter((item) => item.next_review_at <= today)
+  const due = reviews
+    .filter((item) => item.next_review_at <= today)
+    .sort((left, right) => left.next_review_at.localeCompare(right.next_review_at))
+  const dueFlashcards = flashcards.filter(
+    (item) => !item.next_review_at || item.next_review_at <= today,
+  )
+  const weakFlashcards = flashcards.filter(
+    (item) => item.last_score !== null && item.last_score <= 2,
+  )
+  const overdueTasks = pending.filter((item) => item.scheduled_for < today)
   const totalMinutes = done.reduce((sum, item) => sum + item.duration_min, 0)
   const plannedMinutes = tasks.reduce((sum, item) => sum + item.duration_min, 0)
   const todayPlannedMinutes = todayTasks.reduce(
@@ -89,6 +135,17 @@ export default async function DashboardPage({
     : 0
   const nextTask =
     pending.find((item) => item.scheduled_for >= today) ?? pending[0] ?? null
+  const missionTask =
+    todayTasks.find((item) => item.status !== 'done') ?? nextTask
+  const missionReview = due[0] ?? null
+  const missionQuestion = wrongQuestions[0] ?? null
+  const missionFlashcard = dueFlashcards[0] ?? null
+  const riskLevel =
+    overdueTasks.length >= 3 || wrongQuestions.length >= 8
+      ? 'alto'
+      : due.length + dueFlashcards.length + overdueTasks.length > 0
+        ? 'medio'
+        : 'controlado'
   const days = daysUntil(project.exam_date)
   const streak = calculateStreak(done, today)
   const week = buildWeek(tasks, today)
@@ -107,9 +164,11 @@ export default async function DashboardPage({
               Plano de aprovação em movimento
             </p>
             <h2 className="max-w-2xl font-display text-3xl font-extrabold tracking-[-0.045em] text-white md:text-[40px] md:leading-[1.05]">
-              Hoje, cada sessão deixa você mais perto da vaga.
+              Ola, {displayName}.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400">
+              Esta e sua central de decisao para hoje: estudar o bloco certo, revisar o que esta vencendo e atacar os pontos fracos.
+              <br />
               {project.title}
               {project.position_name ? ` · ${project.position_name}` : ''}
             </p>
@@ -162,6 +221,82 @@ export default async function DashboardPage({
             />
           </div>
         </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1fr_.7fr]">
+        <article className="dashboard-panel overflow-hidden p-0">
+          <div className="border-b border-white/10 bg-gradient-to-r from-atlas-400/10 via-atlas-violet/10 to-transparent p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="dashboard-eyebrow">Missao de hoje</p>
+                <h3 className="mt-1 font-display text-xl font-extrabold text-white">
+                  O que fazer agora para ganhar ponto
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                  Tres acoes curtas, puxadas pelo seu cronograma e pelos sinais de desempenho.
+                </p>
+              </div>
+              <Link href={`/cronograma?projeto=${project.id}&filtro=hoje`} className="button-primary">
+                <Play className="size-4 fill-current" />
+                Comecar agora
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid gap-3 p-5 lg:grid-cols-3">
+            <MissionCard
+              icon={Target}
+              label="Estudo principal"
+              title={missionTask?.title ?? 'Planejar proxima sessao'}
+              detail={
+                missionTask
+                  ? `${missionTask.notes ?? 'Bloco do cronograma'} · ${missionTask.duration_min} min`
+                  : 'Crie ou regenere o cronograma para definir o bloco do dia.'
+              }
+              href={`/cronograma?projeto=${project.id}&filtro=hoje`}
+              cta={missionTask ? 'Abrir bloco' : 'Criar plano'}
+              tone="blue"
+            />
+            <MissionCard
+              icon={Layers3}
+              label="Revisao prioritaria"
+              title={missionReview?.title ?? 'Memoria em dia'}
+              detail={
+                missionReview
+                  ? `Venceu em ${formatDate(missionReview.next_review_at)}`
+                  : 'Nenhuma revisao vencida neste momento.'
+              }
+              href={`/revisoes?projeto=${project.id}`}
+              cta={missionReview ? 'Revisar' : 'Ver fila'}
+              tone={missionReview ? 'red' : 'green'}
+            />
+            <MissionCard
+              icon={FileQuestion}
+              label="Ponto fraco"
+              title={missionQuestion?.topic ?? missionFlashcard?.front ?? 'Gerar questoes por topico'}
+              detail={
+                missionQuestion
+                  ? 'Ultimo erro registrado em simulados.'
+                  : missionFlashcard
+                    ? 'Flashcard vencido para reforcar memoria.'
+                    : 'Escolha uma materia e gere questoes especificas.'
+              }
+              href={missionQuestion ? `/simulados?projeto=${project.id}` : `/flashcards?projeto=${project.id}`}
+              cta={missionQuestion ? 'Resolver questoes' : 'Memorizar'}
+              tone="yellow"
+            />
+          </div>
+        </article>
+
+        <RiskCard
+          riskLevel={riskLevel}
+          overdueTasks={overdueTasks.length}
+          dueReviews={due.length}
+          dueFlashcards={dueFlashcards.length}
+          weakFlashcards={weakFlashcards.length}
+          wrongQuestions={wrongQuestions.length}
+          projectId={project.id}
+        />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.3fr_.7fr]">
@@ -560,6 +695,140 @@ function DashboardCard({
       </header>
       {children}
     </section>
+  )
+}
+
+function MissionCard({
+  icon: Icon,
+  label,
+  title,
+  detail,
+  href,
+  cta,
+  tone,
+}: {
+  icon: typeof BookOpen
+  label: string
+  title: string
+  detail: string
+  href: string
+  cta: string
+  tone: 'blue' | 'red' | 'green' | 'yellow'
+}) {
+  const tones = {
+    blue: 'border-atlas-400/20 bg-atlas-400/[0.06] text-atlas-400',
+    red: 'border-atlas-red/20 bg-atlas-red/[0.07] text-atlas-red',
+    green: 'border-atlas-green/20 bg-atlas-green/[0.06] text-atlas-green',
+    yellow: 'border-atlas-yellow/20 bg-atlas-yellow/[0.07] text-atlas-yellow',
+  }
+
+  return (
+    <Link
+      href={href}
+      className="group flex min-h-[210px] flex-col justify-between rounded-[22px] border border-white/10 bg-ink-900/70 p-4 transition hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.035]"
+    >
+      <div>
+        <div className={`mb-4 flex size-11 items-center justify-center rounded-2xl border ${tones[tone]}`}>
+          <Icon className="size-5" />
+        </div>
+        <p className="dashboard-eyebrow">{label}</p>
+        <h4 className="mt-2 line-clamp-2 font-display text-base font-extrabold text-white">
+          {title}
+        </h4>
+        <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{detail}</p>
+      </div>
+      <span className="mt-5 inline-flex items-center gap-1 text-xs font-bold text-atlas-400 transition group-hover:gap-2">
+        {cta}
+        <ArrowRight className="size-3.5" />
+      </span>
+    </Link>
+  )
+}
+
+function RiskCard({
+  riskLevel,
+  overdueTasks,
+  dueReviews,
+  dueFlashcards,
+  weakFlashcards,
+  wrongQuestions,
+  projectId,
+}: {
+  riskLevel: 'alto' | 'medio' | 'controlado'
+  overdueTasks: number
+  dueReviews: number
+  dueFlashcards: number
+  weakFlashcards: number
+  wrongQuestions: number
+  projectId: string
+}) {
+  const risk = {
+    alto: {
+      title: 'Semana em risco',
+      detail: 'Ha atraso ou muitos erros recentes. Melhor fazer uma sessao curta agora do que tentar compensar tudo depois.',
+      className: 'border-atlas-red/25 bg-atlas-red/[0.07] text-atlas-red',
+    },
+    medio: {
+      title: 'Atencao ao acumulado',
+      detail: 'Existem revisoes, cards ou blocos pedindo cuidado. Resolva uma prioridade por vez.',
+      className: 'border-atlas-yellow/25 bg-atlas-yellow/[0.07] text-atlas-yellow',
+    },
+    controlado: {
+      title: 'Plano sob controle',
+      detail: 'Sem grandes gargalos agora. Mantenha consistencia e use questoes para medir dominio.',
+      className: 'border-atlas-green/25 bg-atlas-green/[0.06] text-atlas-green',
+    },
+  }[riskLevel]
+
+  return (
+    <article className="dashboard-panel flex flex-col justify-between">
+      <div>
+        <div className={`mb-4 flex size-11 items-center justify-center rounded-2xl border ${risk.className}`}>
+          <AlertTriangle className="size-5" />
+        </div>
+        <p className="dashboard-eyebrow">Radar da semana</p>
+        <h3 className="mt-2 font-display text-xl font-extrabold text-white">{risk.title}</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-500">{risk.detail}</p>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <RiskPill icon={Clock3} value={overdueTasks} label="atrasadas" />
+          <RiskPill icon={RefreshCcw} value={dueReviews} label="revisoes" />
+          <RiskPill icon={Zap} value={dueFlashcards + weakFlashcards} label="cards" />
+          <RiskPill icon={FileQuestion} value={wrongQuestions} label="erros" />
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Link className="button-secondary" href={`/revisoes?projeto=${projectId}`}>
+          <RefreshCcw className="size-4" />
+          Revisar
+        </Link>
+        <Link className="button-secondary" href={`/simulados?projeto=${projectId}`}>
+          <FileQuestion className="size-4" />
+          Questoes
+        </Link>
+      </div>
+    </article>
+  )
+}
+
+function RiskPill({
+  icon: Icon,
+  value,
+  label,
+}: {
+  icon: typeof BookOpen
+  value: number
+  label: string
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+      <div className="mb-2 flex items-center gap-2 text-slate-500">
+        <Icon className="size-3.5" />
+        <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+      </div>
+      <strong className="font-display text-2xl font-extrabold text-white">{value}</strong>
+    </div>
   )
 }
 
