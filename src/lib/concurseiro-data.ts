@@ -346,6 +346,7 @@ function buildUpcomingStudyDates(studyDays: number[], totalSlots: number): Date[
 type CreatedSubject = {
   id: string
   name: string
+  syllabus: string[]
 }
 
 function buildTaskRows(input: {
@@ -357,7 +358,10 @@ function buildTaskRows(input: {
   focusSubject: string
   examDate: string | null
 }): Database['public']['Tables']['study_tasks']['Insert'][] {
-  const subjects = input.subjects.length > 0 ? input.subjects : [{ id: null, name: 'Plano geral' }]
+  const subjects =
+    input.subjects.length > 0
+      ? input.subjects
+      : [{ id: null, name: 'Plano geral', syllabus: ['Plano geral'] }]
   const prioritizedSubjects = [...subjects].sort((left, right) => {
     const leftFocused = left.name.toLowerCase().includes(input.focusSubject.toLowerCase().trim())
     const rightFocused = right.name.toLowerCase().includes(input.focusSubject.toLowerCase().trim())
@@ -378,6 +382,7 @@ function buildTaskRows(input: {
 
   dates.forEach((date, index) => {
     const subject = prioritizedSubjects[index % prioritizedSubjects.length]
+    const topic = subject.syllabus[index % Math.max(1, subject.syllabus.length)] ?? subject.name
     const scheduledFor = toIsoCalendarDate(date)
     const distanceToExam =
       input.examDate && /^\d{4}-\d{2}-\d{2}$/.test(input.examDate)
@@ -391,10 +396,7 @@ function buildTaskRows(input: {
       subject_id: subject.id,
       user_id: input.userId,
       title: `Estudo profundo: ${subject.name}`,
-      notes:
-        distanceToExam !== null
-          ? `Bloco guiado considerando ${distanceToExam} dias ate a prova.`
-          : 'Bloco guiado pela primeira leitura do edital.',
+      notes: topic,
       scheduled_for: scheduledFor,
       duration_min: minutesPerPrimaryBlock,
       task_type: index % 4 === 3 ? 'questions' : 'study',
@@ -409,7 +411,10 @@ function buildTaskRows(input: {
         subject_id: subject.id,
         user_id: input.userId,
         title: `Revisao ativa: ${subject.name}`,
-        notes: 'Reforco curto para consolidar a memoria do bloco anterior.',
+        notes:
+          distanceToExam !== null
+            ? `${topic} (${distanceToExam} dias ate a prova)`
+            : topic,
         scheduled_for: scheduledFor,
         duration_min: 30,
         task_type: 'revision',
@@ -749,12 +754,15 @@ export async function persistIngestedEdital(input: {
         syllabus: subject.syllabus,
       })),
     )
-    .select('id, name')
+    .select('id, name, syllabus')
   assertSuccess(subjectError, 'Falha ao salvar disciplinas iniciais')
 
   const createdSubjects = (subjectRows ?? []).map((row) => ({
     id: row.id,
     name: row.name,
+    syllabus: Array.isArray(row.syllabus)
+      ? row.syllabus.filter((topic): topic is string => typeof topic === 'string')
+      : [row.name],
   }))
 
   const taskRows = buildTaskRows({
@@ -812,7 +820,7 @@ export async function persistIngestedEdital(input: {
     subject_id: subject.id,
     study_task_id: insertedTasks?.[index]?.id ?? null,
     user_id: user.id,
-    title: `Revisar ${subject.name}`,
+    title: `Revisar ${subject.syllabus[0] ?? subject.name} em ${subject.name}`,
     next_review_at: toIsoCalendarDate(addDays(todayAtLocalMidnight(), index + 1)),
     last_reviewed_at: null,
     interval_days: index + 1,
@@ -992,12 +1000,15 @@ export async function saveReviewedExtraction(input: {
         syllabus: subject.syllabus,
       })),
     )
-    .select('id, name')
+    .select('id, name, syllabus')
   assertSuccess(subjectError, 'Falha ao recriar disciplinas revisadas')
 
   const createdSubjects = (subjectRows ?? []).map((row) => ({
     id: row.id,
     name: row.name,
+    syllabus: Array.isArray(row.syllabus)
+      ? row.syllabus.filter((topic): topic is string => typeof topic === 'string')
+      : [row.name],
   }))
 
   const taskRows = buildTaskRows({

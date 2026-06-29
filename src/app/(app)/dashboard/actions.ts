@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 
 import type { StudyTask } from '@/lib/database.types'
 import { todayIso } from '@/lib/format'
+import { buildReviewTitleFromTask } from '@/lib/revision-intelligence'
 import { createClient } from '@/lib/supabase/server'
 
 export async function toggleTaskAction(formData: FormData) {
@@ -25,7 +26,8 @@ export async function toggleTaskAction(formData: FormData) {
       next.setDate(next.getDate() + 1)
       await supabase.from('review_items').insert({
         project_id: task.project_id, subject_id: task.subject_id, study_task_id: task.id,
-        user_id: user.id, title: task.title, next_review_at: next.toISOString().slice(0, 10),
+        user_id: user.id, title: buildReviewTitleFromTask(task),
+        next_review_at: next.toISOString().slice(0, 10),
       })
     }
   }
