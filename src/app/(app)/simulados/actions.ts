@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import type { Database, Subject } from '@/lib/database.types'
+import { getExamBoardJsonExample, getExamBoardPromptContext } from '@/lib/bancas'
 import { callIA } from '@/lib/ia'
 import { questionHasRequiredHighlight } from '@/lib/question-text'
 import { questionsSchema } from '@/lib/schemas/study-content'
@@ -51,6 +52,16 @@ export async function generateQuestionsAction(
     return { error: 'Materia invalida para este concurso.' }
   }
 
+  const { data: project } = await supabase
+    .from('exam_projects')
+    .select('id, board')
+    .eq('id', parsed.data.projectId)
+    .eq('user_id', user.id)
+    .single()
+
+  const boardPromptContext = getExamBoardPromptContext(project?.board ?? null)
+  const expectedJson = getExamBoardJsonExample(project?.board ?? null)
+
   try {
     const { data: recentQuestions } = await supabase
       .from('mock_questions')
@@ -76,12 +87,15 @@ export async function generateQuestionsAction(
 
 MATERIA: ${typedSubject.name}
 TOPICO OBRIGATORIO: ${parsed.data.topic}
+
+PERFIL DA BANCA:
+${boardPromptContext}
 ${repetitionGuard}
 
 Regras:
 - cobre somente o topico informado, sem questoes genericas da materia;
 - nao repita enunciado, caso pratico, alternativa, pegadinha ou abordagem dos enunciados recentes;
-- use estilo de banca de concurso, com enunciado objetivo e alternativas plausiveis;
+- respeite fielmente o formato e o estilo da banca informado acima;
 - varie dificuldade e forma de cobranca;
 - explique por que a correta esta correta e por que a pegadinha pode confundir.
 - se a questao usar palavra destacada, grifada, sublinhada, em destaque ou em negrito, marque obrigatoriamente o termo com **dois asteriscos** no enunciado ou na alternativa. Exemplo: "A palavra **rapidamente** indica circunstancia de modo.";
@@ -90,9 +104,9 @@ FORMATO OBRIGATORIO:
 - retorne apenas JSON valido, sem Markdown, sem texto antes ou depois;
 - use aspas duplas em todas as chaves e strings;
 - nao use virgula sobrando no ultimo item de arrays ou objetos;
-- cada questao deve ter exatamente 5 alternativas, letras A, B, C, D e E.
+- use exatamente o formato de alternativas indicado no perfil da banca.
 
-JSON esperado: {"questions":[{"statement":"...","alternatives":[{"letter":"A","text":"..."},{"letter":"B","text":"..."},{"letter":"C","text":"..."},{"letter":"D","text":"..."},{"letter":"E","text":"..."}],"correctAnswer":"A","explanation":"..."}]}`,
+JSON esperado: ${expectedJson}`,
     }], {
       task: 'questao',
       maxTokens: 3200,

@@ -213,6 +213,7 @@ export default async function SimuladosPage({
           {subjects.length ? (
             <SimulationGenerator
               projectId={project.id}
+              projectBoard={project.board}
               subjects={subjects}
               recentQuestions={[...pending, ...answered].map((question) => ({
                 subject_id: question.subject_id,
@@ -270,6 +271,7 @@ export default async function SimuladosPage({
 
       <QuestionList
         questions={pending}
+        examBoard={project.board}
         title="Simulado atual"
         description="Questões ainda sem resposta deste concurso."
         emptyTitle="Nenhuma questão pendente"

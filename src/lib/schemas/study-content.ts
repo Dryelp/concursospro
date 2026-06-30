@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const questionSchema = z.object({
   statement: z.string().min(5),
-  alternatives: z.array(z.object({ letter: z.string().min(1).max(2), text: z.string().min(1) })).min(4).max(5),
+  alternatives: z.array(z.object({ letter: z.string().min(1).max(2), text: z.string().min(1) })).min(2).max(5),
   correctAnswer: z.string().min(1).max(2),
   explanation: z.string().min(3),
 })

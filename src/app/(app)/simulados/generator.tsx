@@ -4,6 +4,11 @@ import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { LoaderCircle, Sparkles } from 'lucide-react'
 
+import {
+  getExamBoardJsonExample,
+  getExamBoardProfile,
+  getExamBoardPromptContext,
+} from '@/lib/bancas'
 import type { Database, Subject } from '@/lib/database.types'
 import { callIA } from '@/lib/ia'
 import { questionHasRequiredHighlight } from '@/lib/question-text'
@@ -19,7 +24,6 @@ type RecentQuestion = {
 }
 
 function GenerateButton({ pending }: { pending: boolean }) {
-
   return (
     <button className="button-primary" disabled={pending}>
       {pending ? (
@@ -27,7 +31,7 @@ function GenerateButton({ pending }: { pending: boolean }) {
       ) : (
         <Sparkles className="size-4" />
       )}
-      {pending ? 'Gerando questões...' : 'Gerar questões'}
+      {pending ? 'Gerando questoes...' : 'Gerar questoes'}
     </button>
   )
 }
@@ -49,10 +53,12 @@ function subjectTopics(subject: Subject | undefined) {
 
 export function SimulationGenerator({
   projectId,
+  projectBoard,
   subjects,
   recentQuestions,
 }: {
   projectId: string
+  projectBoard: string | null
   subjects: Subject[]
   recentQuestions: RecentQuestion[]
 }) {
@@ -64,6 +70,9 @@ export function SimulationGenerator({
   const [topic, setTopic] = useState('')
   const topics = subjectTopics(subjects.find((subject) => subject.id === subjectId))
   const topicListId = `simulation-topics-${subjectId}`
+  const boardProfile = getExamBoardProfile(projectBoard)
+  const boardPromptContext = getExamBoardPromptContext(projectBoard)
+  const expectedJson = getExamBoardJsonExample(projectBoard)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -76,12 +85,12 @@ export function SimulationGenerator({
     const quantity = Number(formData.get('quantity') ?? 5)
 
     if (!selectedSubject) {
-      setState({ error: 'Matéria inválida para este concurso.' })
+      setState({ error: 'Materia invalida para este concurso.' })
       return
     }
 
     if (selectedTopic.length < 3) {
-      setState({ error: 'Escolha ou informe o tópico das questões.' })
+      setState({ error: 'Escolha ou informe o topico das questoes.' })
       return
     }
 
@@ -93,7 +102,7 @@ export function SimulationGenerator({
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!session || !user) {
-        setState({ error: 'Sessão expirada. Entre novamente.' })
+        setState({ error: 'Sessao expirada. Entre novamente.' })
         return
       }
 
@@ -109,23 +118,27 @@ export function SimulationGenerator({
 
       const result = await callIA([{
         role: 'user',
-        content: `Gere ${quantity} questões inéditas de concurso público brasileiro.
+        content: `Gere ${quantity} questoes ineditas de concurso publico brasileiro.
 
-MATÉRIA: ${selectedSubject.name}
-TÓPICO OBRIGATÓRIO: ${selectedTopic}
+MATERIA: ${selectedSubject.name}
+TOPICO OBRIGATORIO: ${selectedTopic}
 
-Questões já usadas neste projeto para evitar repetição:
-${repeatedContext || 'Nenhuma questão anterior neste tópico.'}
+PERFIL DA BANCA:
+${boardPromptContext}
+
+Questoes ja usadas neste projeto para evitar repeticao:
+${repeatedContext || 'Nenhuma questao anterior neste topico.'}
 
 Regras:
-- cobre somente o tópico informado, sem questões genéricas da matéria;
-- não repita enunciado, contexto, exemplo, caso prático ou pegadinha das questões já usadas;
-- use estilo de banca de concurso, com enunciado objetivo e alternativas plausíveis;
-- varie dificuldade e forma de cobrança;
-- explique por que a correta está correta e por que a pegadinha pode confundir.
+- cobre somente o topico informado, sem questoes genericas da materia;
+- nao repita enunciado, contexto, exemplo, caso pratico ou pegadinha das questoes ja usadas;
+- respeite fielmente o formato da banca informado acima;
+- varie dificuldade e forma de cobranca dentro do estilo da banca;
+- explique por que a correta esta correta e por que a pegadinha pode confundir;
 - se a questao usar palavra destacada, grifada, sublinhada, em destaque ou em negrito, marque obrigatoriamente o termo com **dois asteriscos** no enunciado ou na alternativa. Exemplo: "A palavra **rapidamente** indica circunstancia de modo.";
 
-Retorne somente JSON: {"questions":[{"statement":"...","alternatives":[{"letter":"A","text":"..."}],"correctAnswer":"A","explanation":"..."}]}`,
+Retorne somente JSON valido, sem Markdown, sem texto antes ou depois.
+JSON esperado: ${expectedJson}`,
       }], {
         task: 'questao',
         maxTokens: quantity <= 5 ? 3000 : 4500,
@@ -183,7 +196,7 @@ Retorne somente JSON: {"questions":[{"statement":"...","alternatives":[{"letter"
       router.refresh()
     } catch (error) {
       setState({
-        error: error instanceof Error ? error.message : 'Falha ao gerar questões.',
+        error: error instanceof Error ? error.message : 'Falha ao gerar questoes.',
       })
     } finally {
       setPending(false)
@@ -237,7 +250,7 @@ Retorne somente JSON: {"questions":[{"statement":"...","alternatives":[{"letter"
           minLength={3}
           placeholder={
             topics.length
-              ? 'Selecione ou escreva um tópico específico'
+              ? 'Selecione ou escreva um topico especifico'
               : 'Ex: Direitos fundamentais'
           }
           required
@@ -250,7 +263,9 @@ Retorne somente JSON: {"questions":[{"statement":"...","alternatives":[{"letter"
           </datalist>
         ) : null}
         <span className="mt-1.5 block text-[11px] text-slate-500">
-          As questões serão focadas neste assunto para medir domínio real.
+          {boardProfile
+            ? `A banca ${boardProfile.name} define formato e estilo das questoes.`
+            : 'As questoes serao focadas neste assunto para medir dominio real.'}
         </span>
       </label>
 

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { Brain, CheckCircle2, CircleHelp, Lightbulb, XCircle } from 'lucide-react'
 
 import { answerQuestionAction } from '@/app/(app)/simulados/actions'
+import { getExamBoardAtlasContext } from '@/lib/bancas'
 import type { MockQuestion } from '@/lib/database.types'
 import {
   hasHighlightMarkup,
@@ -17,6 +18,7 @@ type LocalAnswer = { selectedAnswer: string; answeredAt: string }
 
 type QuestionListProps = {
   questions: MockQuestion[]
+  examBoard: string | null
   title: string
   description: string
   emptyTitle: string
@@ -197,6 +199,7 @@ function atlasSmartHint(
   alternatives: Alternative[],
   answered: boolean,
   selectedAnswer: string | null,
+  examBoard: string | null,
 ) {
   const combinedTexts = [question.statement, ...alternatives.map((alternative) => alternative.text)]
   const needsHighlight = combinedTexts.some(requiresHighlight)
@@ -205,29 +208,36 @@ function atlasSmartHint(
   const topic = question.topic ?? 'este topico'
   const hint = conceptHint(question, alternatives)
   const command = commandStrategy(question)
+  const boardContext = getExamBoardAtlasContext(examBoard)
+  const boardBefore = boardContext
+    ? `${boardContext.name}: ${boardContext.before} Pegadinhas comuns: ${boardContext.traps}.`
+    : ''
+  const boardAfter = boardContext
+    ? `${boardContext.name}: ${boardContext.after} Alerta de banca: ${boardContext.alerts}.`
+    : ''
 
   if (!answered) {
     if (needsHighlight && highlightIsVisible) {
       const termText = terms.length ? ` Termos destacados: ${terms.join(', ')}.` : ''
-      return `${[hint, command].filter(Boolean).join(' ') || 'Leia primeiro o termo destacado e identifique a funcao dele dentro da frase antes de olhar as alternativas.'}${termText}`
+      return `${[boardBefore, hint, command].filter(Boolean).join(' ') || 'Leia primeiro o termo destacado e identifique a funcao dele dentro da frase antes de olhar as alternativas.'}${termText}`
     }
 
     if (needsHighlight) {
       return 'Esta questao menciona termo destacado, mas nao encontrei a marcacao visual. Se a resposta depender disso, gere outra questao deste topico.'
     }
 
-    return [hint, command].filter(Boolean).join(' ') || `Resolva pelo conceito central de ${topic}. Diga para si mesmo qual regra esta sendo cobrada antes de marcar a alternativa.`
+    return [boardBefore, hint, command].filter(Boolean).join(' ') || `Resolva pelo conceito central de ${topic}. Diga para si mesmo qual regra esta sendo cobrada antes de marcar a alternativa.`
   }
 
   if (selectedAnswer === question.correct_answer) {
     const correctText = alternativeText(alternatives, question.correct_answer)
-    return `Boa. A alternativa ${question.correct_answer} esta coerente com o conceito cobrado. ${correctText ? `Repare no trecho: ${correctText.replace(/\*\*/g, '')}` : 'Confira a explicacao para confirmar o fundamento.'}`
+    return `Boa. A alternativa ${question.correct_answer} esta coerente com o conceito cobrado. ${boardAfter} ${correctText ? `Repare no trecho: ${correctText.replace(/\*\*/g, '')}` : 'Confira a explicacao para confirmar o fundamento.'}`
   }
 
   const selectedText = alternativeText(alternatives, selectedAnswer)
   const correctText = alternativeText(alternatives, question.correct_answer)
 
-  return `Voce marcou ${selectedAnswer ?? '-'}, mas o gabarito e ${question.correct_answer}. ${hint ?? 'Compare a funcao do termo na sua alternativa com a funcao do termo correto.'} ${selectedText ? `Na sua alternativa: ${selectedText.replace(/\*\*/g, '')}.` : ''} ${correctText ? `Na correta: ${correctText.replace(/\*\*/g, '')}.` : ''}`
+  return `Voce marcou ${selectedAnswer ?? '-'}, mas o gabarito e ${question.correct_answer}. ${boardAfter} ${hint ?? 'Compare a funcao do termo na sua alternativa com a funcao do termo correto.'} ${selectedText ? `Na sua alternativa: ${selectedText.replace(/\*\*/g, '')}.` : ''} ${correctText ? `Na correta: ${correctText.replace(/\*\*/g, '')}.` : ''}`
 }
 
 function AtlasQuestionHelp({
@@ -235,11 +245,13 @@ function AtlasQuestionHelp({
   alternatives,
   answered,
   selectedAnswer,
+  examBoard,
 }: {
   question: MockQuestion
   alternatives: Alternative[]
   answered: boolean
   selectedAnswer: string | null
+  examBoard: string | null
 }) {
   const [open, setOpen] = useState(false)
 
@@ -260,7 +272,7 @@ function AtlasQuestionHelp({
             <Lightbulb className="size-4 text-atlas-yellow" />
             Prof. Atlas
           </div>
-          <p>{atlasSmartHint(question, alternatives, answered, selectedAnswer)}</p>
+          <p>{atlasSmartHint(question, alternatives, answered, selectedAnswer, examBoard)}</p>
           {answered && question.explanation ? (
             <p className="mt-3 border-t border-white/10 pt-3 text-slate-400">
               <MarkedText value={question.explanation} />
@@ -279,6 +291,7 @@ function AtlasQuestionHelp({
 
 export function QuestionList({
   questions,
+  examBoard,
   title,
   description,
   emptyTitle,
@@ -407,6 +420,7 @@ export function QuestionList({
                   alternatives={alternatives}
                   answered={answered}
                   selectedAnswer={selectedAnswer}
+                  examBoard={examBoard}
                 />
 
                 {answered ? (
