@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import type { Database, Subject } from '@/lib/database.types'
 import { callIA } from '@/lib/ia'
+import { questionHasRequiredHighlight } from '@/lib/question-text'
 import { questionsSchema } from '@/lib/schemas/study-content'
 import { createClient } from '@/lib/supabase/server'
 
@@ -83,6 +84,7 @@ Regras:
 - use estilo de banca de concurso, com enunciado objetivo e alternativas plausiveis;
 - varie dificuldade e forma de cobranca;
 - explique por que a correta esta correta e por que a pegadinha pode confundir.
+- se a questao usar palavra destacada, grifada, sublinhada, em destaque ou em negrito, marque obrigatoriamente o termo com **dois asteriscos** no enunciado ou na alternativa. Exemplo: "A palavra **rapidamente** indica circunstancia de modo.";
 
 FORMATO OBRIGATORIO:
 - retorne apenas JSON valido, sem Markdown, sem texto antes ou depois;
@@ -100,8 +102,21 @@ JSON esperado: {"questions":[{"statement":"...","alternatives":[{"letter":"A","t
       timeoutMs: 60_000,
     })
 
+    const validQuestions = result.questions.filter((question) =>
+      questionHasRequiredHighlight({
+        statement: question.statement,
+        alternatives: question.alternatives,
+      }),
+    )
+
+    if (!validQuestions.length) {
+      return {
+        error: 'A IA gerou questoes que dependiam de destaque, mas nao marcou o termo. Gere novamente.',
+      }
+    }
+
     const inserts: Database['public']['Tables']['mock_questions']['Insert'][] =
-      result.questions.map((question) => ({
+      validQuestions.map((question) => ({
         project_id: parsed.data.projectId,
         subject_id: typedSubject.id,
         user_id: user.id,
@@ -117,7 +132,7 @@ JSON esperado: {"questions":[{"statement":"...","alternatives":[{"letter":"A","t
     if (error) return { error: error.message }
 
     revalidatePath('/simulados')
-    return { success: `${result.questions.length} questoes geradas.` }
+    return { success: `${validQuestions.length} questoes geradas.` }
   } catch (error) {
     return {
       error: error instanceof Error

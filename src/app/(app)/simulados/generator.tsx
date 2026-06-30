@@ -6,6 +6,7 @@ import { LoaderCircle, Sparkles } from 'lucide-react'
 
 import type { Database, Subject } from '@/lib/database.types'
 import { callIA } from '@/lib/ia'
+import { questionHasRequiredHighlight } from '@/lib/question-text'
 import { questionsSchema } from '@/lib/schemas/study-content'
 import { createClient } from '@/lib/supabase/client'
 
@@ -122,6 +123,7 @@ Regras:
 - use estilo de banca de concurso, com enunciado objetivo e alternativas plausíveis;
 - varie dificuldade e forma de cobrança;
 - explique por que a correta está correta e por que a pegadinha pode confundir.
+- se a questao usar palavra destacada, grifada, sublinhada, em destaque ou em negrito, marque obrigatoriamente o termo com **dois asteriscos** no enunciado ou na alternativa. Exemplo: "A palavra **rapidamente** indica circunstancia de modo.";
 
 Retorne somente JSON: {"questions":[{"statement":"...","alternatives":[{"letter":"A","text":"..."}],"correctAnswer":"A","explanation":"..."}]}`,
       }], {
@@ -141,16 +143,24 @@ Retorne somente JSON: {"questions":[{"statement":"...","alternatives":[{"letter"
         const statement = question.statement.replace(/\s+/g, ' ').trim().toLowerCase()
         return statement.length > 0 && !normalizedPrevious.has(statement)
       })
+      const validQuestions = uniqueQuestions.filter((question) =>
+        questionHasRequiredHighlight({
+          statement: question.statement,
+          alternatives: question.alternatives,
+        }),
+      )
 
-      if (!uniqueQuestions.length) {
+      if (!validQuestions.length) {
         setState({
-          error: 'A IA gerou questões parecidas com as anteriores. Tente outro tópico ou gere novamente.',
+          error: uniqueQuestions.length
+            ? 'A IA gerou questoes que dependiam de destaque, mas nao marcou o termo. Gere novamente.'
+            : 'A IA gerou questoes parecidas com as anteriores. Tente outro topico ou gere novamente.',
         })
         return
       }
 
       const inserts: Database['public']['Tables']['mock_questions']['Insert'][] =
-        uniqueQuestions.map((question) => ({
+        validQuestions.map((question) => ({
           project_id: projectId,
           subject_id: selectedSubject.id,
           user_id: user.id,
@@ -169,7 +179,7 @@ Retorne somente JSON: {"questions":[{"statement":"...","alternatives":[{"letter"
         return
       }
 
-      setState({ success: `${uniqueQuestions.length} questões geradas.` })
+      setState({ success: `${validQuestions.length} questoes geradas.` })
       router.refresh()
     } catch (error) {
       setState({
