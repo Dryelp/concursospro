@@ -75,12 +75,114 @@ function atlasHint(question: MockQuestion, answered: boolean, selectedAnswer: st
   return `Voce marcou ${selectedAnswer ?? '-'}, mas o gabarito e ${question.correct_answer}. Compare sua alternativa com a explicacao e procure a pegadinha que mudou o sentido.`
 }
 
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Mark}/gu, '')
+    .toLowerCase()
+}
+
+function highlightedTerms(question: MockQuestion, alternatives: Alternative[]) {
+  return [question.statement, ...alternatives.map((alternative) => alternative.text)]
+    .flatMap((text) => [...text.matchAll(/\*\*([^*]{1,160})\*\*/g)].map((match) => match[1]))
+}
+
+function alternativeText(alternatives: Alternative[], letter: string | null) {
+  if (!letter) return ''
+  return alternatives.find((alternative) => alternative.letter === letter)?.text ?? ''
+}
+
+function conceptHint(question: MockQuestion) {
+  const text = normalizeText(`${question.statement} ${question.topic ?? ''}`)
+
+  if (text.includes('predicativo do sujeito')) {
+    return 'Aqui o foco e predicativo do sujeito. Procure o termo que atribui estado, qualidade ou condicao ao sujeito da oracao. Cuidado: se a caracteristica recair sobre o objeto, vira predicativo do objeto, nao do sujeito.'
+  }
+
+  if (text.includes('predicativo do objeto')) {
+    return 'Aqui o foco e predicativo do objeto. Procure o termo que caracteriza o objeto depois da acao verbal, como em "considerou o projeto viavel". Nao confunda com caracteristica atribuida ao sujeito.'
+  }
+
+  if (text.includes('adverbio') || text.includes('adverbial')) {
+    return 'Para achar adverbio, pergunte se o termo modifica verbo, adjetivo ou outro adverbio, indicando tempo, modo, lugar, intensidade, causa ou negacao. Se ele caracteriza um substantivo, tende a ser adjetivo.'
+  }
+
+  if (text.includes('adjetivo')) {
+    return 'Adjetivo caracteriza substantivo. Veja a qual nome o termo destacado se liga e se expressa qualidade, estado, origem ou caracteristica.'
+  }
+
+  if (text.includes('sujeito')) {
+    return 'Identifique primeiro o verbo e pergunte: quem pratica, sofre ou apresenta esse estado? O termo que responde a essa pergunta costuma revelar o sujeito.'
+  }
+
+  if (text.includes('oracao subordinada') || text.includes('subordinada')) {
+    return 'Classifique a oracao pela funcao que ela exerce. Se funciona como substantivo, sera substantiva; se caracteriza nome, adjetiva; se indica circunstancia, adverbial.'
+  }
+
+  if (text.includes('crase')) {
+    return 'Na crase, teste se ha preposicao "a" exigida pelo termo anterior e artigo "a" aceito pelo termo seguinte. Trocar por masculino e ver se aparece "ao" ajuda muito.'
+  }
+
+  if (text.includes('concordancia')) {
+    return 'Em concordancia, localize o nucleo do sujeito ou do termo determinado. A pegadinha costuma estar em palavra distante, expressao intercalada ou nucleo no plural.'
+  }
+
+  if (text.includes('regencia')) {
+    return 'Em regencia, descubra qual termo exige complemento e qual preposicao ele pede. Depois confira se o sentido muda com outra preposicao.'
+  }
+
+  if (text.includes('pontuacao') || text.includes('virgula')) {
+    return 'Na pontuacao, procure deslocamentos, termos intercalados e separacao indevida entre sujeito e verbo. A virgula quase sempre esta marcando funcao sintatica.'
+  }
+
+  return null
+}
+
+function atlasSmartHint(
+  question: MockQuestion,
+  alternatives: Alternative[],
+  answered: boolean,
+  selectedAnswer: string | null,
+) {
+  const combinedTexts = [question.statement, ...alternatives.map((alternative) => alternative.text)]
+  const needsHighlight = combinedTexts.some(requiresHighlight)
+  const highlightIsVisible = combinedTexts.some(hasHighlightMarkup)
+  const terms = highlightedTerms(question, alternatives)
+  const topic = question.topic ?? 'este topico'
+  const hint = conceptHint(question)
+
+  if (!answered) {
+    if (needsHighlight && highlightIsVisible) {
+      const termText = terms.length ? ` Termos destacados: ${terms.join(', ')}.` : ''
+      return `${hint ?? 'Leia primeiro o termo destacado e identifique a funcao dele dentro da frase antes de olhar as alternativas.'}${termText}`
+    }
+
+    if (needsHighlight) {
+      return 'Esta questao menciona termo destacado, mas nao encontrei a marcacao visual. Se a resposta depender disso, gere outra questao deste topico.'
+    }
+
+    return hint ?? `Resolva pelo conceito central de ${topic}. Diga para si mesmo qual regra esta sendo cobrada antes de marcar a alternativa.`
+  }
+
+  if (selectedAnswer === question.correct_answer) {
+    const correctText = alternativeText(alternatives, question.correct_answer)
+    return `Boa. A alternativa ${question.correct_answer} esta coerente com o conceito cobrado. ${correctText ? `Repare no trecho: ${correctText.replace(/\*\*/g, '')}` : 'Confira a explicacao para confirmar o fundamento.'}`
+  }
+
+  const selectedText = alternativeText(alternatives, selectedAnswer)
+  const correctText = alternativeText(alternatives, question.correct_answer)
+
+  return `Voce marcou ${selectedAnswer ?? '-'}, mas o gabarito e ${question.correct_answer}. ${hint ?? 'Compare a funcao do termo na sua alternativa com a funcao do termo correto.'} ${selectedText ? `Na sua alternativa: ${selectedText.replace(/\*\*/g, '')}.` : ''} ${correctText ? `Na correta: ${correctText.replace(/\*\*/g, '')}.` : ''}`
+}
+
 function AtlasQuestionHelp({
   question,
+  alternatives,
   answered,
   selectedAnswer,
 }: {
   question: MockQuestion
+  alternatives: Alternative[]
   answered: boolean
   selectedAnswer: string | null
 }) {
@@ -103,7 +205,7 @@ function AtlasQuestionHelp({
             <Lightbulb className="size-4 text-atlas-yellow" />
             Prof. Atlas
           </div>
-          <p>{atlasHint(question, answered, selectedAnswer)}</p>
+          <p>{atlasSmartHint(question, alternatives, answered, selectedAnswer)}</p>
           {answered && question.explanation ? (
             <p className="mt-3 border-t border-white/10 pt-3 text-slate-400">
               <MarkedText value={question.explanation} />
@@ -247,6 +349,7 @@ export function QuestionList({
 
                 <AtlasQuestionHelp
                   question={question}
+                  alternatives={alternatives}
                   answered={answered}
                   selectedAnswer={selectedAnswer}
                 />
