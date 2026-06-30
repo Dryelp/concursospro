@@ -23,12 +23,14 @@ type SubjectPerformance = {
   percent: number
 }
 
+type SubjectStatsRow = Pick<MockQuestion, 'subject_id' | 'is_correct'>
+
 function percent(part: number, total: number) {
   if (!total) return 0
   return Math.round((part / total) * 100)
 }
 
-function buildPerformance(subjects: Subject[], answered: MockQuestion[]) {
+function buildPerformance(subjects: Subject[], answered: SubjectStatsRow[]) {
   return subjects
     .map<SubjectPerformance>((subject) => {
       const questions = answered.filter((item) => item.subject_id === subject.id)
@@ -92,7 +94,14 @@ export default async function SimuladosPage({
     )
   }
 
-  const [{ data: pendingRows }, { data: answeredRows }] = await Promise.all([
+  const [
+    { data: pendingRows },
+    { data: answeredRows },
+    { count: answeredCount },
+    { count: correctCount },
+    { count: pendingCount },
+    { data: answeredStatsRows },
+  ] = await Promise.all([
     supabase
       .from('mock_questions')
       .select('*')
@@ -109,14 +118,41 @@ export default async function SimuladosPage({
       .not('answered_at', 'is', null)
       .order('answered_at', { ascending: false })
       .limit(100),
+    supabase
+      .from('mock_questions')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .not('answered_at', 'is', null),
+    supabase
+      .from('mock_questions')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .eq('is_correct', true),
+    supabase
+      .from('mock_questions')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .is('answered_at', null),
+    supabase
+      .from('mock_questions')
+      .select('subject_id, is_correct')
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .not('answered_at', 'is', null)
+      .limit(5000),
   ])
 
   const pending = (pendingRows ?? []) as MockQuestion[]
   const answered = (answeredRows ?? []) as MockQuestion[]
-  const correct = answered.filter((item) => item.is_correct).length
-  const wrong = answered.length - correct
-  const accuracy = percent(correct, answered.length)
-  const performance = buildPerformance(subjects, answered)
+  const answeredTotal = answeredCount ?? answered.length
+  const correct = correctCount ?? answered.filter((item) => item.is_correct).length
+  const wrong = Math.max(0, answeredTotal - correct)
+  const accuracy = percent(correct, answeredTotal)
+  const pendingTotal = pendingCount ?? pending.length
+  const performance = buildPerformance(subjects, (answeredStatsRows ?? []) as SubjectStatsRow[])
 
   return (
     <div className="dashboard-reveal space-y-5">
@@ -141,7 +177,7 @@ export default async function SimuladosPage({
         <MetricCard
           icon={CircleHelp}
           label="Resolvidas"
-          value={String(answered.length)}
+          value={String(answeredTotal)}
           detail="Questões respondidas até agora."
         />
         <MetricCard
@@ -167,7 +203,7 @@ export default async function SimuladosPage({
         <MetricCard
           icon={BarChart3}
           label="Pendentes"
-          value={String(pending.length)}
+          value={String(pendingTotal)}
           detail="Questões aguardando resposta."
         />
       </section>

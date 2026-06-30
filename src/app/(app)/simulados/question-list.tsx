@@ -92,8 +92,34 @@ function alternativeText(alternatives: Alternative[], letter: string | null) {
   return alternatives.find((alternative) => alternative.letter === letter)?.text ?? ''
 }
 
-function conceptHint(question: MockQuestion) {
-  const text = normalizeText(`${question.statement} ${question.topic ?? ''}`)
+function commandStrategy(question: MockQuestion) {
+  const text = normalizeText(question.statement)
+
+  if (text.includes('incorreta') || text.includes('exceto') || text.includes('nao se aplica')) {
+    return 'O comando pede uma excecao ou alternativa incorreta. Antes de marcar, confirme qual opcao quebra a regra, e nao qual parece mais familiar.'
+  }
+
+  if (text.includes('correta') || text.includes('adequada')) {
+    return 'O comando pede a alternativa correta. Procure a opcao que satisfaz todos os requisitos do enunciado, nao apenas uma parte dele.'
+  }
+
+  if (text.includes('de acordo com') || text.includes('nos termos')) {
+    return 'A questao cobra aderencia ao texto legal ou ao conceito formal. Evite responder por intuicao: procure a expressao mais fiel a regra.'
+  }
+
+  if (text.includes('analise') || text.includes('julgue')) {
+    return 'Leia cada afirmação separadamente e procure o ponto que torna a frase absoluta, incompleta ou invertida.'
+  }
+
+  return null
+}
+
+function conceptHint(question: MockQuestion, alternatives: Alternative[]) {
+  const text = normalizeText(
+    `${question.statement} ${question.topic ?? ''} ${question.explanation ?? ''} ${alternatives
+      .map((alternative) => alternative.text)
+      .join(' ')}`,
+  )
 
   if (text.includes('predicativo do sujeito')) {
     return 'Aqui o foco e predicativo do sujeito. Procure o termo que atribui estado, qualidade ou condicao ao sujeito da oracao. Cuidado: se a caracteristica recair sobre o objeto, vira predicativo do objeto, nao do sujeito.'
@@ -135,6 +161,34 @@ function conceptHint(question: MockQuestion) {
     return 'Na pontuacao, procure deslocamentos, termos intercalados e separacao indevida entre sujeito e verbo. A virgula quase sempre esta marcando funcao sintatica.'
   }
 
+  if (text.includes('constituicao') || text.includes('constitucional') || text.includes('direitos fundamentais')) {
+    return 'Em Direito Constitucional, localize se a cobranca e conceito, competencia, principio ou excecao. A pegadinha costuma trocar sujeito competente, prazo ou alcance da norma.'
+  }
+
+  if (text.includes('administrativo') || text.includes('ato administrativo') || text.includes('licitacao')) {
+    return 'Em Direito Administrativo, identifique o instituto primeiro. Depois confira requisitos, competencia, efeito juridico e excecoes.'
+  }
+
+  if (text.includes('prazo') || text.includes('dias')) {
+    return 'Quando houver prazo, separe a regra principal da excecao. Verifique se a questao pede dias corridos, uteis, termo inicial ou termo final.'
+  }
+
+  if (text.includes('porcentagem') || text.includes('percentual') || text.includes('%')) {
+    return 'Em porcentagem, transforme o enunciado em base, taxa e resultado. Cuidado para nao aplicar percentual sobre a base errada.'
+  }
+
+  if (text.includes('probabilidade')) {
+    return 'Em probabilidade, identifique o total de casos possiveis e os casos favoraveis. Se houver "e" ou "ou", cuidado com multiplicacao e soma.'
+  }
+
+  if (text.includes('raciocinio logico') || text.includes('proposicao') || text.includes('logica')) {
+    return 'Em RLM, traduza a frase para uma estrutura simples antes de calcular. Negacao, condicional e quantificadores costumam ser a pegadinha.'
+  }
+
+  if (text.includes('informatica') || text.includes('software') || text.includes('seguranca da informacao')) {
+    return 'Em Informatica, diferencie conceito, finalidade e exemplo. A pegadinha costuma misturar nomes parecidos ou trocar funcao da ferramenta.'
+  }
+
   return null
 }
 
@@ -149,19 +203,20 @@ function atlasSmartHint(
   const highlightIsVisible = combinedTexts.some(hasHighlightMarkup)
   const terms = highlightedTerms(question, alternatives)
   const topic = question.topic ?? 'este topico'
-  const hint = conceptHint(question)
+  const hint = conceptHint(question, alternatives)
+  const command = commandStrategy(question)
 
   if (!answered) {
     if (needsHighlight && highlightIsVisible) {
       const termText = terms.length ? ` Termos destacados: ${terms.join(', ')}.` : ''
-      return `${hint ?? 'Leia primeiro o termo destacado e identifique a funcao dele dentro da frase antes de olhar as alternativas.'}${termText}`
+      return `${[hint, command].filter(Boolean).join(' ') || 'Leia primeiro o termo destacado e identifique a funcao dele dentro da frase antes de olhar as alternativas.'}${termText}`
     }
 
     if (needsHighlight) {
       return 'Esta questao menciona termo destacado, mas nao encontrei a marcacao visual. Se a resposta depender disso, gere outra questao deste topico.'
     }
 
-    return hint ?? `Resolva pelo conceito central de ${topic}. Diga para si mesmo qual regra esta sendo cobrada antes de marcar a alternativa.`
+    return [hint, command].filter(Boolean).join(' ') || `Resolva pelo conceito central de ${topic}. Diga para si mesmo qual regra esta sendo cobrada antes de marcar a alternativa.`
   }
 
   if (selectedAnswer === question.correct_answer) {
