@@ -14,28 +14,48 @@ export type CreateEditalState = {
   projectId?: string
   subjectCount?: number
 }
+
+export type UpdateEditalState = {
+  error?: string
+  success?: boolean
+}
+
 const schema = z.object({
   titulo: z.string().trim().min(3, 'Informe o nome do concurso.').max(200),
   orgao: z.string().trim().max(150).optional(),
+  banca: z.string().trim().max(150).optional(),
   cargo: z.string().trim().max(150).optional(),
   data_prova: z.string().optional().transform((value) => value || null),
-  conteudo: z.string().trim().min(20, 'Cole o conteúdo programático.').max(100_000),
+  conteudo: z.string().trim().min(20, 'Cole o conteudo programatico.').max(100_000),
 })
 
-export async function createEditalAction(_state: CreateEditalState, formData: FormData): Promise<CreateEditalState> {
+const updateSchema = z.object({
+  id: z.string().uuid(),
+  titulo: z.string().trim().min(3, 'Informe o nome do concurso.').max(200),
+  orgao: z.string().trim().max(150).optional(),
+  banca: z.string().trim().max(150).optional(),
+  cargo: z.string().trim().max(150).optional(),
+  data_prova: z.string().optional().transform((value) => value || null),
+})
+
+export async function createEditalAction(
+  _state: CreateEditalState,
+  formData: FormData,
+): Promise<CreateEditalState> {
   const parsed = schema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return { error: parsed.error.issues[0].message }
+
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: { session } } = await supabase.auth.getSession()
-  if (!user) return { error: 'Sua sessão expirou.' }
+  if (!user) return { error: 'Sua sessao expirou.' }
 
   let subjects: MateriaExtraida[] = parseConteudoLocal(parsed.data.conteudo)
   if (subjects.length < 2 && session) {
     try {
       const result = await callIA([{
         role: 'user',
-        content: `Identifique todas as disciplinas e seus tópicos no conteúdo programático abaixo. Não confunda capítulos, tópicos ou cabeçalhos gerais com disciplinas. Preserve os nomes oficiais. Retorne {"materias":[{"nome":"...","peso":1,"topicos":["..."]}]}.\n\nCONTEÚDO:\n${parsed.data.conteudo}`,
+        content: `Identifique todas as disciplinas e seus topicos no conteudo programatico abaixo. Nao confunda capitulos, topicos ou cabecalhos gerais com disciplinas. Preserve os nomes oficiais. Retorne {"materias":[{"nome":"...","peso":1,"topicos":["..."]}]}.\n\nCONTEUDO:\n${parsed.data.conteudo}`,
       }], {
         task: 'parse',
         maxTokens: 7000,
@@ -54,33 +74,80 @@ export async function createEditalAction(_state: CreateEditalState, formData: Fo
       console.error('[editais] fallback de IA falhou', error)
     }
   }
+
   const { data, error } = await supabase.from('exam_projects').insert({
-    user_id: user.id, title: parsed.data.titulo, organization: parsed.data.orgao || null,
-    position_name: parsed.data.cargo || null, exam_date: parsed.data.data_prova,
-    source_type: 'plain-text', status: 'ready',
+    user_id: user.id,
+    title: parsed.data.titulo,
+    organization: parsed.data.orgao || null,
+    board: parsed.data.banca || null,
+    position_name: parsed.data.cargo || null,
+    exam_date: parsed.data.data_prova,
+    source_type: 'plain-text',
+    status: 'ready',
     extraction_status: subjects.length >= 2 ? 'ready' : 'review',
-    progress: 10, summary: parsed.data.conteudo,
+    progress: 10,
+    summary: parsed.data.conteudo,
   }).select('*').single()
   const project = data as ExamProject | null
   if (error || !project) return { error: error?.message ?? 'Falha ao criar concurso.' }
 
   if (subjects.length) {
     const inserts: Database['public']['Tables']['subjects']['Insert'][] = subjects.map((subject) => ({
-      project_id: project.id, user_id: user.id, name: subject.nome, weight: subject.peso,
-      priority: Math.min(5, Math.max(1, subject.peso)), origin: 'extracted',
-      confidence: 0.75, topic_count: subject.topicos.length, syllabus: subject.topicos,
+      project_id: project.id,
+      user_id: user.id,
+      name: subject.nome,
+      weight: subject.peso,
+      priority: Math.min(5, Math.max(1, subject.peso)),
+      origin: 'extracted',
+      confidence: 0.75,
+      topic_count: subject.topicos.length,
+      syllabus: subject.topicos,
     }))
     const { error: subjectError } = await supabase.from('subjects').insert(inserts)
     if (subjectError) return { error: subjectError.message }
   }
+
   revalidatePath('/', 'layout')
   return { projectId: project.id, subjectCount: subjects.length }
+}
+
+export async function updateEditalAction(
+  _state: UpdateEditalState,
+  formData: FormData,
+): Promise<UpdateEditalState> {
+  const parsed = updateSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sua sessao expirou.' }
+
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('exam_projects')
+    .update({
+      title: parsed.data.titulo,
+      organization: parsed.data.orgao || null,
+      board: parsed.data.banca || null,
+      position_name: parsed.data.cargo || null,
+      exam_date: parsed.data.data_prova,
+      updated_at: now,
+    })
+    .eq('id', parsed.data.id)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/', 'layout')
+  return { success: true }
 }
 
 export async function deleteEditalAction(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (user && id) await supabase.from('exam_projects').delete().eq('id', id).eq('user_id', user.id)
+  if (user && id) {
+    await supabase.from('exam_projects').delete().eq('id', id).eq('user_id', user.id)
+  }
   revalidatePath('/', 'layout')
 }
