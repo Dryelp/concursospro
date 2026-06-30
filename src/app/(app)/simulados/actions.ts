@@ -190,4 +190,6 @@ export async function answerQuestionAction(formData: FormData) {
     .is('answered_at', null)
 
   revalidatePath('/simulados')
+  revalidatePath('/revisoes')
+  revalidatePath('/dashboard')
 }

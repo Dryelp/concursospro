@@ -25,7 +25,7 @@ type RecentQuestion = {
 
 function GenerateButton({ pending }: { pending: boolean }) {
   return (
-    <button className="button-primary" disabled={pending}>
+    <button className="button-primary w-full justify-center lg:w-auto" disabled={pending}>
       {pending ? (
         <LoaderCircle className="size-4 animate-spin" />
       ) : (
@@ -206,7 +206,7 @@ JSON esperado: ${expectedJson}`,
   return (
     <form
       onSubmit={handleSubmit}
-      className="dashboard-panel mb-5 grid gap-4 md:grid-cols-[1fr_120px_1.35fr_auto] md:items-end"
+      className="dashboard-panel mb-5 grid gap-4 lg:grid-cols-[1fr_120px_1.35fr_auto] lg:items-end"
     >
       <input type="hidden" name="projectId" value={projectId} />
 

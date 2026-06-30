@@ -9,6 +9,7 @@ import {
   HelpCircle,
   RefreshCcw,
   Sparkles,
+  Target,
 } from 'lucide-react'
 
 import {
@@ -19,6 +20,7 @@ import { toggleTaskAction } from '@/app/(app)/dashboard/actions'
 import { SectionEmpty } from '@/components/section-empty'
 import type { StudyTask, Subject, TaskType } from '@/lib/database.types'
 import { formatDate, subjectColor, todayIso } from '@/lib/format'
+import { cycleProgress } from '@/lib/study-plan'
 import { requireWorkspace } from '@/lib/workspace'
 
 type SearchParams = {
@@ -193,6 +195,15 @@ export default async function CronogramaPage({
   const completed = weekTasks.filter((task) => task.status === 'done').length
   const totalMinutes = weekTasks.reduce((sum, task) => sum + task.duration_min, 0)
   const subjectMap = new Map(subjects.map((subject) => [subject.id, subject]))
+  const pendingWeekTasks = weekTasks.filter((task) => task.status !== 'done')
+  const nextTask =
+    overdueTasks[0] ??
+    pendingWeekTasks.find((task) => task.scheduled_for >= today) ??
+    pendingWeekTasks[0] ??
+    null
+  const progress = cycleProgress(weekTasks)
+  const revisionCount = weekTasks.filter((task) => task.task_type === 'revision').length
+  const questionCount = weekTasks.filter((task) => task.task_type === 'questions' || task.task_type === 'mock').length
 
   return (
     <div className="dashboard-reveal space-y-5">
@@ -203,14 +214,13 @@ export default async function CronogramaPage({
           <div>
             <p className="dashboard-eyebrow flex items-center gap-2">
               <CalendarDays className="size-4" />
-              Programacao semanal
+              Execução do plano
             </p>
             <h2 className="mt-2 font-display text-3xl font-extrabold tracking-[-0.04em] text-white">
-              Veja sua semana de aprovacao.
+              Sua semana sem se perder.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-              Arrumamos o cronograma por dia, cor e tipo de atividade para ficar
-              claro o que estudar, revisar e resolver.
+              Primeiro execute o próximo bloco. Depois, se quiser, olhe a grade semanal completa.
             </p>
           </div>
 
@@ -222,6 +232,11 @@ export default async function CronogramaPage({
                 Gerar cronograma
               </button>
             </form>
+
+            <Link href={`/plano?projeto=${project.id}`} className="button-secondary">
+              <Target className="size-4" />
+              Ver plano
+            </Link>
 
             {overdueTasks.length ? (
               <form action={rescheduleOverdueTasksAction}>
@@ -236,7 +251,64 @@ export default async function CronogramaPage({
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-4">
+      <section className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
+        <article className="dashboard-panel overflow-hidden p-0">
+          <div className="border-b border-white/10 bg-gradient-to-r from-atlas-400/10 via-atlas-violet/10 to-transparent p-5">
+            <p className="dashboard-eyebrow">Faça agora</p>
+            <h3 className="mt-1 font-display text-xl font-extrabold text-white">
+              {nextTask?.title ?? 'Nenhum bloco pendente nesta semana'}
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              {nextTask
+                ? `${nextTask.notes ?? 'Bloco do cronograma'} · ${nextTask.duration_min}min · ${formatDate(nextTask.scheduled_for)}`
+                : 'Gere um ciclo no plano ou avance para a próxima semana.'}
+            </p>
+          </div>
+          {nextTask ? (
+            <div className="p-5">
+              <div className="rounded-[24px] border border-white/10 bg-ink-900/70 p-5">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${taskTone(nextTask, today).badge}`}>
+                    {taskTone(nextTask, today).label}
+                  </span>
+                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-400">
+                    {nextTask.duration_min}min
+                  </span>
+                </div>
+                <p className="break-words text-sm leading-6 text-slate-300">
+                  {nextTask.notes ?? subjectMap.get(nextTask.subject_id ?? '')?.name ?? taskTypeLabel(nextTask.task_type)}
+                </p>
+                <form action={toggleTaskAction} className="mt-5">
+                  <input type="hidden" name="taskId" value={nextTask.id} />
+                  <input type="hidden" name="status" value="done" />
+                  <button className="button-primary w-full justify-center">
+                    Concluir próximo bloco
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : null}
+        </article>
+
+        <article className="dashboard-panel">
+          <p className="dashboard-eyebrow">Progresso da semana</p>
+          <div className="mt-4 flex items-center gap-5">
+            <div className="grid size-28 place-items-center rounded-full border border-atlas-400/20 bg-atlas-400/10">
+              <div className="text-center">
+                <strong className="font-display text-3xl font-extrabold text-white">{progress.percent}%</strong>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">feito</p>
+              </div>
+            </div>
+            <div className="min-w-0 flex-1 space-y-2 text-sm text-slate-400">
+              <p><strong className="text-white">{completed}/{weekTasks.length}</strong> sessões concluídas</p>
+              <p><strong className="text-white">{revisionCount}</strong> revisões na semana</p>
+              <p><strong className="text-white">{questionCount}</strong> blocos de questões/simulado</p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="dashboard-metric-card">
           <Clock3 className="mb-3 size-5 text-atlas-400" />
           <p className="dashboard-eyebrow">Carga da semana</p>
@@ -306,8 +378,8 @@ export default async function CronogramaPage({
             description="Clique em Gerar cronograma para criar um plano baseado em sua rotina."
           />
         ) : (
-          <div className="overflow-x-auto pb-2">
-            <div className="grid min-w-[1060px] grid-cols-7 overflow-hidden rounded-3xl border border-white/[0.08] bg-ink-950/35">
+        <div className="-mx-4 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0">
+            <div className="grid min-w-[900px] grid-cols-7 overflow-hidden rounded-3xl border border-white/[0.08] bg-ink-950/35 xl:min-w-[1060px]">
               {weekDays.map((day) => {
                 const tasks = grouped.get(day.iso) ?? []
                 const minutes = tasks.reduce((sum, task) => sum + task.duration_min, 0)
@@ -366,10 +438,10 @@ export default async function CronogramaPage({
                                   style={{ backgroundColor: color }}
                                 />
                                 <div className="min-w-0">
-                                  <h4 className="line-clamp-2 text-xs font-extrabold leading-5 text-white">
+                                  <h4 className="break-words text-xs font-extrabold leading-5 text-white">
                                     {task.title}
                                   </h4>
-                                  <p className="mt-1 line-clamp-3 text-[11px] leading-4 text-slate-400">
+                                  <p className="mt-1 break-words text-[11px] leading-4 text-slate-400">
                                     {task.notes || subject?.name || taskTypeLabel(task.task_type)}
                                   </p>
                                 </div>

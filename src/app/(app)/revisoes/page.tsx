@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import {
   AlertTriangle,
   Brain,
@@ -6,10 +5,10 @@ import {
   HelpCircle,
   Layers3,
   RefreshCcw,
-  Target,
 } from 'lucide-react'
 
 import { rateReviewAction } from '@/app/(app)/revisoes/actions'
+import { RevisionQuestionsModal } from '@/app/(app)/revisoes/revision-questions-modal'
 import { SectionEmpty } from '@/components/section-empty'
 import type { Flashcard, MockQuestion, ReviewItem, StudyTask } from '@/lib/database.types'
 import { formatDate, subjectColor, todayIso } from '@/lib/format'
@@ -168,33 +167,26 @@ export default async function RevisoesPage({
         <div className="space-y-4">
           {cards.map(({ review, insight }) => (
             <article key={review.id} className="dashboard-panel overflow-hidden p-0">
-              <div
-                className="h-1.5"
-                style={{ backgroundColor: subjectColor(insight.subjectName) }}
-              />
+              <div className="h-1.5" style={{ backgroundColor: subjectColor(insight.subjectName) }} />
               <div className="p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="flex gap-3">
+                  <div className="flex min-w-0 gap-3">
                     <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-atlas-400/10 text-atlas-400">
                       <RefreshCcw className="size-5" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span
-                          className={`rounded-full border px-3 py-1 text-xs font-bold ${priorityTone(
-                            insight.priority,
-                          )}`}
-                        >
+                        <span className={`rounded-full border px-3 py-1 text-xs font-bold ${priorityTone(insight.priority)}`}>
                           Prioridade {insight.priority}
                         </span>
                         <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-400">
                           {formatDate(review.next_review_at)}
                         </span>
                       </div>
-                      <h3 className="font-display text-lg font-extrabold text-white">
+                      <h3 className="break-words font-display text-lg font-extrabold text-white">
                         {insight.subjectName}
                       </h3>
-                      <p className="mt-1 text-sm font-semibold text-atlas-400">
+                      <p className="mt-1 break-words text-sm font-semibold text-atlas-400">
                         {insight.topic}
                       </p>
                       <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
@@ -203,13 +195,13 @@ export default async function RevisoesPage({
                       </p>
                     </div>
                   </div>
-                  <Link
-                    className="button-secondary justify-center"
-                    href={`/simulados?projeto=${project.id}`}
-                  >
-                    <Target className="size-4" />
-                    Gerar questões
-                  </Link>
+                  <RevisionQuestionsModal
+                    projectId={project.id}
+                    reviewId={review.id}
+                    subjectId={review.subject_id}
+                    subjectName={insight.subjectName}
+                    topic={insight.topic}
+                  />
                 </div>
 
                 <div className="mt-5 grid gap-4 xl:grid-cols-[.9fr_1.1fr]">
@@ -234,10 +226,10 @@ export default async function RevisoesPage({
                       Como revisar em 15 minutos
                     </div>
                     <ol className="space-y-2 text-sm leading-6 text-slate-400">
-                      {insight.checklist.map((item, index) => (
+                      {insight.checklist.map((item, itemIndex) => (
                         <li key={item} className="flex gap-3">
                           <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-white/5 text-[11px] font-bold text-slate-300">
-                            {index + 1}
+                            {itemIndex + 1}
                           </span>
                           <span>{item}</span>
                         </li>

@@ -376,7 +376,7 @@ export function QuestionList({
                   ) : null}
                 </div>
 
-                <p className="mb-4 text-sm font-semibold leading-6 text-slate-100">
+                <p className="mb-4 break-words text-sm font-semibold leading-6 text-slate-100">
                   <MarkedText value={question.statement} />
                 </p>
 
@@ -407,7 +407,7 @@ export function QuestionList({
                         onClick={() => answer(question, alternative.letter)}
                       >
                         <strong>{alternative.letter}</strong>
-                        <span>
+                        <span className="min-w-0 break-words">
                           <MarkedText value={alternative.text} />
                         </span>
                       </button>
@@ -435,7 +435,9 @@ export function QuestionList({
                         ? 'Resposta correta'
                         : `Resposta correta: ${question.correct_answer}`}
                     </div>
-                    <MarkedText value={question.explanation ?? ''} />
+                    <span className="break-words">
+                      <MarkedText value={question.explanation ?? ''} />
+                    </span>
                   </div>
                 ) : null}
               </article>

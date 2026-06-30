@@ -239,8 +239,8 @@ export default async function SimuladosPage({
               performance.map((item) => (
                 <div key={item.id}>
                   <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                    <span className="font-bold text-slate-200">{item.name}</span>
-                    <span className="font-semibold text-slate-500">
+                    <span className="min-w-0 flex-1 truncate font-bold text-slate-200">{item.name}</span>
+                    <span className="shrink-0 font-semibold text-slate-500">
                       {item.correct}/{item.total} · {item.percent}%
                     </span>
                   </div>

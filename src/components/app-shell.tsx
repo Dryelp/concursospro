@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   BookOpen, CalendarDays, ChevronDown, FileText, GraduationCap, Home, Layers3,
   LogOut, Menu, MessageCircleMore, Settings, Target, X, Zap,
+  Sparkles,
 } from 'lucide-react'
 
 import { logoutAction } from '@/app/(app)/actions'
@@ -15,6 +16,7 @@ const sections = [
   { label: 'Principal', items: [
     { href: '/dashboard', label: 'Dashboard', icon: Home },
     { href: '/editais', label: 'Meus Editais', icon: Target },
+    { href: '/plano', label: 'Plano', icon: Sparkles },
     { href: '/cronograma', label: 'Cronograma', icon: CalendarDays },
   ]},
   { label: 'Estudo', items: [
