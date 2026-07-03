@@ -160,7 +160,21 @@ function splitTopics(value: string): string[] {
 }
 
 function extractSubjects(lines: string[]): Array<{ role: string | null; topics: string[] }> {
-  const headingIndex = lines.findIndex(isProgramContentHeading) {
+  const headingIndex = lines.findIndex(isProgramContentHeading)
+
+  if (headingIndex < 0) return []
+
+  const subjects: Array<{ role: string | null; topics: string[] }> = []
+  let current: { role: string; topics: string[] } | null = null
+
+  function flushCurrent() {
+    if (!current) return
+    const topics = dedupeStrings(current.topics).slice(0, 80)
+    subjects.push({ role: current.role, topics })
+    current = null
+  }
+
+  for (const rawLine of lines.slice(headingIndex + 1, headingIndex + 220)) {
     const line = compactWhitespace(rawLine)
     const normalized = normalizeForCompare(line)
     if (!line) continue
