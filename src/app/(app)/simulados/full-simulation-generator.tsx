@@ -55,7 +55,7 @@ export function FullSimulationGenerator({
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid gap-3">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
             Matriz

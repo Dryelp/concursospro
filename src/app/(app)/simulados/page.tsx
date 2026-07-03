@@ -1,7 +1,10 @@
 import {
   BarChart3,
+  BookOpenCheck,
   CheckCircle2,
   CircleHelp,
+  FileQuestion,
+  ListFilter,
   Percent,
   Target,
   XCircle,
@@ -74,6 +77,31 @@ function MetricCard({
         {value}
       </strong>
       <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
+    </div>
+  )
+}
+
+function ModeCard({
+  icon: Icon,
+  title,
+  description,
+  detail,
+}: {
+  icon: typeof CircleHelp
+  title: string
+  description: string
+  detail: string
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+      <div className="mb-4 flex size-10 items-center justify-center rounded-2xl bg-atlas-400/10 text-atlas-300">
+        <Icon className="size-5" />
+      </div>
+      <strong className="block font-display text-base text-white">{title}</strong>
+      <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+      <span className="mt-4 inline-flex rounded-full border border-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+        {detail}
+      </span>
     </div>
   )
 }
@@ -170,13 +198,13 @@ export default async function SimuladosPage({
     <div className="dashboard-reveal space-y-5">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="dashboard-eyebrow">Banco de questões</p>
+          <p className="dashboard-eyebrow">Central de questões</p>
           <h2 className="mt-1 font-display text-2xl font-extrabold text-white">
             Simulados
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Gere questões por tópico, responda em ciclos curtos e acompanhe onde
-            está ganhando ou perdendo pontos.
+            Gere questões por tópico, monte uma prova proporcional ao edital e
+            acompanhe onde está ganhando ou perdendo pontos.
           </p>
         </div>
         <span className="dashboard-chip">
@@ -220,8 +248,29 @@ export default async function SimuladosPage({
         />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_.85fr]">
-        <div>
+      <section className="dashboard-panel grid gap-4 md:grid-cols-3">
+        <ModeCard
+          icon={ListFilter}
+          title="Gerar por filtro"
+          description="Escolha matéria, quantidade e assunto obrigatório para uma bateria rápida."
+          detail="Tópico do edital"
+        />
+        <ModeCard
+          icon={FileQuestion}
+          title="Simulado da prova"
+          description="Usa a estrutura detectada do edital para distribuir questões por disciplina."
+          detail={examStructure.source === 'edital' ? 'Matriz do edital' : 'Matriz estimada'}
+        />
+        <ModeCard
+          icon={BookOpenCheck}
+          title="Acompanhar desempenho"
+          description="Veja acertos, erros e matérias que precisam de revisão antes da prova."
+          detail={`${accuracy}% de acerto`}
+        />
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="min-w-0">
           {subjects.length ? (
             <div className="space-y-5">
               <SimulationGenerator
@@ -234,9 +283,13 @@ export default async function SimuladosPage({
                   statement: question.statement,
                 }))}
               />
-              <FullSimulationGenerator
-                projectId={project.id}
-                examStructure={examStructure}
+              <QuestionList
+                questions={pending}
+                examBoard={project.board}
+                title="Questões pendentes"
+                description="Questões ainda sem resposta deste concurso."
+                emptyTitle="Nenhuma questão pendente"
+                emptyDescription="Gere questões por matéria e tópico para começar uma nova bateria."
               />
             </div>
           ) : (
@@ -247,54 +300,52 @@ export default async function SimuladosPage({
           )}
         </div>
 
-        <aside className="dashboard-panel">
-          <p className="dashboard-eyebrow">Por matéria</p>
-          <h3 className="mt-1 font-display text-lg font-extrabold text-white">
-            Mapa de acerto
-          </h3>
-          <div className="mt-5 space-y-4">
-            {performance.length ? (
-              performance.map((item) => (
-                <div key={item.id}>
-                  <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                    <span className="min-w-0 flex-1 truncate font-bold text-slate-200">{item.name}</span>
-                    <span className="shrink-0 font-semibold text-slate-500">
-                      {item.correct}/{item.total} · {item.percent}%
-                    </span>
+        <aside className="space-y-5">
+          <FullSimulationGenerator
+            projectId={project.id}
+            examStructure={examStructure}
+          />
+
+          <section className="dashboard-panel">
+            <p className="dashboard-eyebrow">Por matéria</p>
+            <h3 className="mt-1 font-display text-lg font-extrabold text-white">
+              Mapa de acerto
+            </h3>
+            <div className="mt-5 space-y-4">
+              {performance.length ? (
+                performance.map((item) => (
+                  <div key={item.id}>
+                    <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                      <span className="min-w-0 flex-1 truncate font-bold text-slate-200">{item.name}</span>
+                      <span className="shrink-0 font-semibold text-slate-500">
+                        {item.correct}/{item.total} · {item.percent}%
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${item.percent}%`,
+                          backgroundColor: subjectColor(item.name),
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-600">
+                      {item.wrong} {item.wrong === 1 ? 'erro' : 'erros'} para
+                      revisar.
+                    </p>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white/5">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${item.percent}%`,
-                        backgroundColor: subjectColor(item.name),
-                      }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-600">
-                    {item.wrong} {item.wrong === 1 ? 'erro' : 'erros'} para
-                    revisar.
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="rounded-2xl border border-dashed border-white/10 p-5 text-sm leading-6 text-slate-500">
-                Responda algumas questões para o mapa mostrar seus pontos fortes
-                e fracos.
-              </p>
-            )}
-          </div>
+                ))
+              ) : (
+                <p className="rounded-2xl border border-dashed border-white/10 p-5 text-sm leading-6 text-slate-500">
+                  Responda algumas questões para o mapa mostrar seus pontos
+                  fortes e fracos.
+                </p>
+              )}
+            </div>
+          </section>
         </aside>
       </section>
-
-      <QuestionList
-        questions={pending}
-        examBoard={project.board}
-        title="Simulado atual"
-        description="Questões ainda sem resposta deste concurso."
-        emptyTitle="Nenhuma questão pendente"
-        emptyDescription="Gere questões por matéria e tópico para começar uma nova bateria."
-      />
     </div>
   )
 }

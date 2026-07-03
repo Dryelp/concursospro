@@ -119,11 +119,11 @@ export function inferExamStructure(subjects: Subject[], board?: string | null): 
         name: subject.name,
         questionCount: Math.max(1, Math.round(totalQuestions * share)),
         weight,
-        notes: 'Distribuicao estimada pelas materias e pesos cadastrados.',
+        notes: 'Distribuição estimada pelas matérias e pesos cadastrados.',
         confidence: 0.35,
       }
     }),
-    warnings: ['A estrutura da prova ainda nao foi confirmada no edital; usamos uma distribuicao estimada.'],
+    warnings: ['A estrutura da prova ainda não foi confirmada no edital; usamos uma distribuição estimada.'],
   })
 }
 
@@ -141,10 +141,10 @@ export function formatExamStructureLabel(structure: ExamStructure) {
     multiple_choice_a_d: 'A-D',
     true_false: 'Certo/Errado',
     mixed: 'Misto',
-    unknown: 'Nao identificado',
+    unknown: 'Não identificado',
   }
 
-  return `${structure.totalQuestions ?? '?'} questoes · ${formatLabel[structure.format]}`
+  return `${structure.totalQuestions ?? '?'} questões · ${formatLabel[structure.format]}`
 }
 
 export function buildSimulationPlan(

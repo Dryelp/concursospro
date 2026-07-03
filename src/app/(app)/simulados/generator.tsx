@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { LoaderCircle, Sparkles } from 'lucide-react'
+import { Filter, LoaderCircle, Search, Sparkles } from 'lucide-react'
 
 import {
   getExamBoardJsonExample,
@@ -25,7 +25,7 @@ type RecentQuestion = {
 
 function GenerateButton({ pending }: { pending: boolean }) {
   return (
-    <button className="button-primary w-full justify-center lg:w-auto" disabled={pending}>
+    <button className="button-primary w-full justify-center xl:w-auto" disabled={pending}>
       {pending ? (
         <LoaderCircle className="size-4 animate-spin" />
       ) : (
@@ -207,72 +207,122 @@ JSON esperado: ${expectedJson}`,
   return (
     <form
       onSubmit={handleSubmit}
-      className="dashboard-panel mb-5 grid gap-4 lg:grid-cols-[1fr_120px_1.35fr_auto] lg:items-end"
+      className="dashboard-panel mb-5 space-y-5 overflow-hidden"
     >
       <input type="hidden" name="projectId" value={projectId} />
 
-      <label>
-        <span className="label">Materia</span>
-        <select
-          className="field"
-          name="subjectId"
-          value={subjectId}
-          onChange={(event) => {
-            setSubjectId(event.target.value)
-            setTopic('')
-          }}
-          required
-        >
-          {subjects.map((subject) => (
-            <option key={subject.id} value={subject.id}>
-              {subject.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        <span className="label">Quantidade</span>
-        <select className="field" name="quantity" defaultValue="5">
-          <option value="5">5</option>
-          <option value="10">10</option>
-          <option value="20">20</option>
-        </select>
-      </label>
-
-      <label>
-        <span className="label">Topico obrigatorio</span>
-        <input
-          className="field"
-          name="topic"
-          value={topic}
-          onChange={(event) => setTopic(event.target.value)}
-          list={topics.length ? topicListId : undefined}
-          minLength={3}
-          placeholder={
-            topics.length
-              ? 'Selecione ou escreva um topico especifico'
-              : 'Ex: Direitos fundamentais'
-          }
-          required
-        />
-        {topics.length ? (
-          <datalist id={topicListId}>
-            {topics.map((item) => (
-              <option key={item} value={item} />
-            ))}
-          </datalist>
-        ) : null}
-        <span className="mt-1.5 block text-[11px] text-slate-500">
-          {boardProfile
-            ? `A banca ${boardProfile.name} define formato e estilo das questoes.`
-            : 'As questoes serao focadas neste assunto para medir dominio real.'}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="dashboard-eyebrow">Filtros de geração</p>
+          <h3 className="mt-1 font-display text-xl font-extrabold text-white">
+            Questões por tópico
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            Escolha a disciplina, trave o assunto e gere uma bateria objetiva sem
+            misturar conteúdos do edital.
+          </p>
+        </div>
+        <span className="dashboard-chip w-fit">
+          <Filter className="size-3.5" />
+          {boardProfile ? boardProfile.name : 'Banca do edital'}
         </span>
-      </label>
+      </div>
 
-      <GenerateButton pending={pending} />
+      <div className="grid gap-3 rounded-3xl border border-white/10 bg-ink-950/45 p-3 md:grid-cols-2 xl:grid-cols-[1.2fr_.55fr_1.55fr_auto] xl:items-end">
+        <label>
+          <span className="label">Disciplina</span>
+          <select
+            className="field"
+            name="subjectId"
+            value={subjectId}
+            onChange={(event) => {
+              setSubjectId(event.target.value)
+              setTopic('')
+            }}
+            required
+          >
+            {subjects.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      <div className="md:col-span-4" aria-live="polite">
+        <label>
+          <span className="label">Quantidade</span>
+          <select className="field" name="quantity" defaultValue="5">
+            <option value="5">5 questões</option>
+            <option value="10">10 questões</option>
+            <option value="20">20 questões</option>
+          </select>
+        </label>
+
+        <label>
+          <span className="label">Assunto obrigatório</span>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+            <input
+              className="field pl-11"
+              name="topic"
+              value={topic}
+              onChange={(event) => setTopic(event.target.value)}
+              list={topics.length ? topicListId : undefined}
+              minLength={3}
+              placeholder={
+                topics.length
+                  ? 'Selecione ou escreva um topico especifico'
+                  : 'Ex: Direitos fundamentais'
+              }
+              required
+            />
+          </div>
+          {topics.length ? (
+            <datalist id={topicListId}>
+              {topics.map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
+          ) : null}
+        </label>
+
+        <GenerateButton pending={pending} />
+      </div>
+
+      {topics.length ? (
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              Assuntos do edital
+            </span>
+            <span className="text-[11px] text-slate-600">{topics.length} tópicos</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {topics.slice(0, 10).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  topic === item
+                    ? 'border-atlas-400 bg-atlas-400 text-white'
+                    : 'border-white/10 bg-white/[0.03] text-slate-400 hover:border-atlas-400/40 hover:text-white'
+                }`}
+                onClick={() => setTopic(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-5 text-slate-500">
+        {boardProfile
+          ? `A banca ${boardProfile.name} orienta formato, estilo e nível das questões.`
+          : 'As questões serão focadas neste assunto para medir domínio real.'}
+      </p>
+
+      <div aria-live="polite">
         {state?.error ? (
           <p className="text-sm text-atlas-red">{state.error}</p>
         ) : null}

@@ -77,4 +77,59 @@ NOÇÕES DE INFORMÁTICA: Sistemas operacionais; Internet; Segurança da informa
       },
     ])
   })
+
+  it('extrai estrutura da prova objetiva quando houver distribuicao por disciplina', () => {
+    const extraction = extractEditalHeuristically({
+      fileName: 'edital.pdf',
+      classification: undefined,
+      textContent: `
+CONTEÚDO PROGRAMÁTICO
+LÍNGUA PORTUGUESA: Interpretação de textos; Ortografia.
+MATEMÁTICA: Porcentagem; Razão e proporção.
+
+QUADRO DE PROVAS
+Prova objetiva de múltipla escolha, com duração de 4 horas.
+LÍNGUA PORTUGUESA: 10 questões
+MATEMÁTICA: 5 questões
+Total de 15 questões
+`,
+    })
+
+    expect(extraction.examStructure.totalQuestions).toBe(15)
+    expect(extraction.examStructure.durationMinutes).toBe(240)
+    expect(extraction.examStructure.disciplines).toEqual([
+      expect.objectContaining({ name: 'LÍNGUA PORTUGUESA', questionCount: 10 }),
+      expect.objectContaining({ name: 'MATEMÁTICA', questionCount: 5 }),
+    ])
+  })
+
+  it('extrai estrutura quando tabela do PDF vier quebrada em linhas', () => {
+    const extraction = extractEditalHeuristically({
+      fileName: 'edital.pdf',
+      classification: undefined,
+      textContent: `
+CONTEÚDO PROGRAMÁTICO
+LÍNGUA PORTUGUESA: Compreensão e interpretação de textos; Classes de palavras.
+NOÇÕES DE DIREITO: Constituição Federal; Administração pública.
+
+QUADRO DE PROVAS
+Prova objetiva
+Disciplina
+Número de questões
+LÍNGUA PORTUGUESA
+10
+NOÇÕES DE DIREITO
+20
+Teste de Capacitação Física
+50 pontos
+Total de 30 questões
+`,
+    })
+
+    expect(extraction.examStructure.totalQuestions).toBe(30)
+    expect(extraction.examStructure.disciplines).toEqual([
+      expect.objectContaining({ name: 'LÍNGUA PORTUGUESA', questionCount: 10 }),
+      expect.objectContaining({ name: 'NOÇÕES DE DIREITO', questionCount: 20 }),
+    ])
+  })
 })

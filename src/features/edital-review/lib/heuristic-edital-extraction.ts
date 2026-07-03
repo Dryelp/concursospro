@@ -269,6 +269,122 @@ function isProgramContentHeading(value: string): boolean {
   return /conteudo programatico|conteudos programaticos|programa da prova|programa de prova|programas de prova|conteudo da prova|conteudo das provas|conhecimentos gerais|conhecimentos especificos|objetos de avaliacao|disciplinas cobradas|materias cobradas/.test(normalized)
 }
 
+function isExamStructureHeading(value: string): boolean {
+  const normalized = normalizeForCompare(value)
+  return /quadro de provas|tabela de provas|prova objetiva|provas objetivas|composicao da prova|numero de questoes|quantidade de questoes|pontuacao|duracao da prova|valor por questao|carater eliminatorio|estrutura da prova/.test(normalized)
+}
+
+function extractDurationMinutes(lines: string[]): number | null {
+  const joined = lines.join(' ')
+  const hourMinuteMatch = joined.match(/(\d{1,2})\s*h(?:oras?)?\s*(?:e\s*)?(\d{1,2})?\s*min/i)
+  if (hourMinuteMatch) {
+    return Number(hourMinuteMatch[1]) * 60 + Number(hourMinuteMatch[2] ?? 0)
+  }
+
+  const hourMatch = joined.match(/(\d{1,2})\s*(?:horas|hora)\b/i)
+  if (hourMatch) return Number(hourMatch[1]) * 60
+
+  const minuteMatch = joined.match(/(\d{2,3})\s*minutos\b/i)
+  return minuteMatch ? Number(minuteMatch[1]) : null
+}
+
+function findSubjectNameInLine(line: string, subjectNames: string[]): string | null {
+  const normalized = normalizeForCompare(line)
+
+  return subjectNames.find((name) => {
+    const normalizedName = normalizeForCompare(name)
+    return normalized.includes(normalizedName) || normalizedName.includes(normalized)
+  }) ?? null
+}
+
+function extractStandaloneQuestionCount(lines: string[], index: number): number | null {
+  for (const candidate of lines.slice(index + 1, index + 5)) {
+    const normalized = normalizeForCompare(candidate)
+    if (isSelectionPhase(normalized)) return null
+
+    const numberMatch = candidate.match(/^\s*(\d{1,3})(?:\s*(?:quest(?:ao|oes|ões)|itens?))?\s*$/i)
+    if (!numberMatch) continue
+
+    const count = Number(numberMatch[1])
+    if (count > 0 && count <= 120) return count
+  }
+
+  return null
+}
+
+function isExamStructureNoiseName(value: string): boolean {
+  return /^(total|subtotal|disciplina|materia|numero de questoes|quantidade de questoes|pontos|pontuacao|valor|prova objetiva|quadro de provas|tabela de provas|provas)\b/.test(
+    normalizeForCompare(value),
+  )
+}
+
+function extractExamStructure(lines: string[], subjects: Array<{ role: string | null; topics: string[] }>): EditalExtraction['examStructure'] {
+  const headingIndexes = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => isExamStructureHeading(line))
+    .map(({ index }) => index)
+  const windows = headingIndexes.length
+    ? headingIndexes.flatMap((index) => lines.slice(Math.max(0, index - 8), Math.min(lines.length, index + 90)))
+    : lines.slice(0, 260)
+  const subjectNames = subjects.map((subject) => subject.role).filter((role): role is string => Boolean(role))
+  const disciplines: EditalExtraction['examStructure']['disciplines'] = []
+  const seen = new Set<string>()
+
+  windows.forEach((line, index) => {
+    const normalized = normalizeForCompare(line)
+    if (isSelectionPhase(normalized)) return
+    const questionMatch =
+      line.match(/(.{3,100}?)(?:\s{2,}|:|\s-\s|\s\|\s).{0,80}?(\d{1,3})\s*(?:quest(?:ao|oes|ões)|itens?|pontos?)/i) ??
+      line.match(/(.{3,100}?)(?:\s{2,}|:|\s-\s|\s\|\s|\.{2,})\s*(\d{1,3})(?:\s+\d{1,3})?\s*$/i)
+    const matchedSubject = findSubjectNameInLine(line, subjectNames)
+    const count = questionMatch
+      ? Number(questionMatch[2])
+      : matchedSubject
+        ? extractStandaloneQuestionCount(windows, index)
+        : null
+
+    if (!count) return
+
+    const rawName = questionMatch ? cleanSubjectTitle(questionMatch[1]) : matchedSubject
+    const name = matchedSubject ?? rawName
+    if (!name) return
+    const key = normalizeForCompare(name)
+    if (isExamStructureNoiseName(name) || (!matchedSubject && !looksLikeSubjectTitle(name))) return
+    if (seen.has(key) || count <= 0 || count > 300) return
+
+    disciplines.push({
+      name,
+      questionCount: count,
+      weight: null,
+      notes: line,
+      confidence: matchedSubject ? 0.74 : 0.55,
+    })
+    seen.add(key)
+  })
+
+  const joined = windows.join(' ')
+  const explicitTotal = joined.match(/total(?:\s+de)?[^0-9]{0,40}(\d{1,3})\s*(?:quest(?:ao|oes|ões)|itens?)/i)?.[1]
+  const summedTotal = disciplines.reduce((sum, item) => sum + (item.questionCount ?? 0), 0)
+  const totalQuestions = explicitTotal ? Number(explicitTotal) : summedTotal || null
+  const format = /certo\s*\/?\s*errado|certo ou errado/i.test(joined)
+    ? 'true_false'
+    : /multipla escolha|múltipla escolha|alternativas|letras?\s+[a-e]/i.test(joined)
+      ? 'multiple_choice_a_e'
+      : 'unknown'
+
+  return {
+    totalQuestions,
+    durationMinutes: extractDurationMinutes(windows),
+    format,
+    source: disciplines.length || totalQuestions ? 'edital' : 'inferred',
+    confidence: disciplines.length ? 0.72 : totalQuestions ? 0.55 : 0.15,
+    disciplines,
+    warnings: disciplines.length
+      ? []
+      : ['A heuristica local nao encontrou distribuicao de questoes por disciplina.'],
+  }
+}
+
 function splitTopics(value: string): string[] {
   return value
     .split(/\r?\n|[;•]/)
@@ -386,6 +502,7 @@ export function extractEditalHeuristically(
   const organizer = extractOrganizer(lines)
   const opportunities = extractOpportunities(lines, textContent)
   const subjects = extractSubjects(lines)
+  const examStructure = extractExamStructure(lines, subjects)
   const attachments = extractAttachments(lines)
   const locations = extractLocations(lines)
   const url = textContent.match(urlRegex)?.[0] ?? null
@@ -419,6 +536,7 @@ export function extractEditalHeuristically(
     locations,
   }
   extraction.opportunities = opportunities
+  extraction.examStructure = examStructure
   extraction.subjects = subjects
   extraction.attachments = attachments
   extraction.timeline = [

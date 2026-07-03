@@ -24,6 +24,9 @@ const systemPrompt = [
   'Nunca inclua como subject: teste de aptidao/capacitacao fisica, TAF, avaliacao psicologica, exame medico, inspecao de saude, investigacao social, prova de titulos, heteroidentificacao, procedimento documental, curso de formacao ou fases semelhantes.',
   'Se o edital listar fases do certame, use isso apenas como contexto; procure a secao "conteudo programatico", "programa da prova", "conhecimentos" ou "objetos de avaliacao" para preencher subjects.',
   'Extraia tambem examStructure quando houver matriz da prova: total de questoes, tempo, formato e quantidade/peso por disciplina.',
+  'examStructure e obrigatorio quando o edital informar quadro de provas, numero de questoes, valor por questao, pontuacao, duracao, disciplinas da prova objetiva/escrita ou carater eliminatorio/classificatorio.',
+  'Em examStructure.disciplines, cada disciplina deve trazer questionCount quando o quadro do edital informar quantidade de questoes. Se o edital trouxer apenas pontos/peso, preencha weight e notes.',
+  'Procure a estrutura da prova em secoes como: provas, prova objetiva, quadro de provas, tabela de provas, composicao da prova, numero de questoes, pontuacao, duracao da prova e criterios de avaliacao.',
   'Se a matriz da prova estiver incompleta, preencha apenas o que estiver sustentado pelo edital e registre warnings.',
   'Use warnings para ambiguidade relevante e evidence para trechos curtos que sustentem os principais campos.',
 ].join(' ')
@@ -41,6 +44,24 @@ const contentProgramKeywords = [
   'objetos de avaliacao',
   'disciplinas cobradas',
   'materias cobradas',
+  'quadro de provas',
+  'tabela de provas',
+  'prova objetiva',
+  'provas objetivas',
+  'composicao da prova',
+  'composição da prova',
+  'numero de questoes',
+  'número de questões',
+  'quantidade de questoes',
+  'quantidade de questões',
+  'pontuacao',
+  'pontuação',
+  'duracao da prova',
+  'duração da prova',
+  'valor por questao',
+  'valor por questão',
+  'carater eliminatorio',
+  'caráter eliminatório',
 ]
 
 function buildRelevantTextBlock(textContent: string): string {
@@ -102,6 +123,7 @@ function buildUserPrompt(payload: EditalAiPayload): string {
     'Regra obrigatoria para conteudo programatico: subjects deve conter disciplinas reais, e cada disciplina precisa carregar seus topicos de estudo. Nao basta listar "Lingua Portuguesa" ou "Matematica"; extraia os assuntos internos de cada uma.',
     'Regra de exclusao: nao use fases do concurso como materia. TAF/teste fisico/avaliacao psicologica/exame medico/investigacao social/curso de formacao/prova de titulos nao entram em subjects.',
     'Prioridade absoluta: se houver trechos marcados como TRECHO PRIORITARIO DE CONTEUDO PROGRAMATICO, extraia subjects desses trechos e ignore listas de etapas/fases do concurso.',
+    'Regra obrigatoria para estrutura da prova: procure nos trechos prioritarios a tabela/quadro que informa quantas questoes existem na prova objetiva/escrita. Preencha examStructure.totalQuestions, durationMinutes, format e disciplines[].questionCount quando sustentado pelo texto.',
     'Texto do edital abaixo:',
     textBlock,
   ].join('\n\n')
