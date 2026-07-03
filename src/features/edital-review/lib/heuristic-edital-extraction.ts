@@ -220,6 +220,51 @@ function extractOpportunities(lines: string[], textContent: string) {
   return opportunities
 }
 
+function normalizeForCompare(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Mark}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function cleanSubjectTitle(value: string): string {
+  return compactWhitespace(value)
+    .replace(/^\d{1,3}(?:[.)-]|\s)+/, '')
+    .replace(/[:.;,-]+$/, '')
+    .trim()
+}
+
+function cleanTopic(value: string): string {
+  return compactWhitespace(value)
+    .replace(/^\d+(?:\.\d+)*[.)-]?\s*/, '')
+    .replace(/^[\-•*]\s*/, '')
+    .replace(/[:.;,-]+$/, '')
+    .trim()
+}
+
+function looksLikeSubjectTitle(value: string): boolean {
+  const title = cleanSubjectTitle(value)
+  const normalized = normalizeForCompare(title)
+  const letters = [...title].filter((char) => /\p{L}/u.test(char))
+  const upperLetters = letters.filter((char) => char === char.toLocaleUpperCase('pt-BR'))
+  const upperRatio = letters.length ? upperLetters.length / letters.length : 0
+
+  if (title.length < 3 || title.length > 120 || letters.length < 3) return false
+  if (/^(conteudo programatico|conhecimentos gerais|conhecimentos especificos|prova objetiva|disciplinas|materias cobradas)$/i.test(normalized)) return false
+  if (/^(anexo|cronograma|bibliografia|das inscricoes|do concurso|dos recursos|resultado|classificacao)/i.test(normalized)) return false
+
+  return upperRatio >= 0.7 || /^(lingua|direito|nocoes|matematica|informatica|raciocinio|legislacao|administracao|portugues|conhecimentos)/i.test(normalized)
+}
+
+function splitTopics(value: string): string[] {
+  return value
+    .split(/\r?\n|[;•]/)
+    .map(cleanTopic)
+    .filter((topic) => topic.length >= 4)
+}
+
 function extractSubjects(lines: string[]) {
   const headingIndex = lines.findIndex((line) =>
     /conteudo programatico|conteúdo programático|disciplinas|materias cobradas|matérias cobradas/i.test(
@@ -231,15 +276,59 @@ function extractSubjects(lines: string[]) {
     return []
   }
 
+  const subjects: Array<{ role: string | null; topics: string[] }> = []
+  let current: { role: string; topics: string[] } | null = null
+
+  function flushCurrent() {
+    if (!current) return
+    const topics = dedupeStrings(current.topics).slice(0, 80)
+    subjects.push({ role: current.role, topics })
+    current = null
+  }
+
+  for (const rawLine of lines.slice(headingIndex + 1, headingIndex + 180)) {
+    const line = compactWhitespace(rawLine)
+    const normalized = normalizeForCompare(line)
+    if (!line) continue
+    if (/^(anexo|cronograma|bibliografia|resultado|classificacao|dos recursos|das inscricoes)/i.test(normalized)) {
+      if (subjects.length || current) break
+      continue
+    }
+
+    const colonMatch = line.match(/^(.{3,120}?)\s*:\s*(.+)$/)
+    if (colonMatch && looksLikeSubjectTitle(colonMatch[1])) {
+      flushCurrent()
+      current = { role: cleanSubjectTitle(colonMatch[1]), topics: splitTopics(colonMatch[2]) }
+      continue
+    }
+
+    const numberedMatch = line.match(/^\d{1,3}[.)-]?\s+(.+)$/)
+    const candidateTitle = numberedMatch?.[1] ?? line
+    const decimalTopic = /^\d+(?:\.\d+)+[.)-]?\s+/.test(line)
+    if (!decimalTopic && looksLikeSubjectTitle(candidateTitle)) {
+      flushCurrent()
+      current = { role: cleanSubjectTitle(candidateTitle), topics: [] }
+      continue
+    }
+
+    if (current) {
+      current.topics.push(...splitTopics(line))
+    }
+  }
+
+  flushCurrent()
+
+  if (subjects.length > 0) {
+    return subjects.filter((subject) => subject.topics.length > 0)
+  }
+
   const topics = dedupeStrings(
     lines
-      .slice(headingIndex + 1, headingIndex + 10)
-      .flatMap((line) => line.split(/[;,-]/))
-      .map((topic) => compactWhitespace(topic))
-      .filter((topic) => topic.length >= 4),
-  ).slice(0, 12)
+      .slice(headingIndex + 1, headingIndex + 35)
+      .flatMap(splitTopics),
+  ).slice(0, 30)
 
-  return topics.length > 0 ? [{ role: null, topics }] : []
+  return topics.length > 0 ? [{ role: 'Conteudo programatico', topics }] : []
 }
 
 function extractAttachments(lines: string[]) {

@@ -237,6 +237,34 @@ type SubjectDraft = {
   priority: number
 }
 
+function subjectNameFromTopic(topic: string): { name: string; topics: string[] } | null {
+  const match = topic.match(/^(.{3,120}?)\s*:\s*(.+)$/)
+  if (!match) {
+    return null
+  }
+
+  const name = normalizeWhitespace(match[1])
+    .replace(/^\d{1,3}[.)-]?\s+/, '')
+    .replace(/[:.;,-]+$/, '')
+  const topics = uniqueStrings(
+    match[2]
+      .split(/\r?\n|[;]/)
+      .map((item) =>
+        item
+          .replace(/^\s*\d+(?:\.\d+)*[.)-]?\s*/, '')
+          .replace(/\s+/g, ' ')
+          .replace(/[:.;,-]+$/, '')
+          .trim(),
+      ),
+  )
+
+  if (name.length < 3 || topics.length === 0) {
+    return null
+  }
+
+  return { name, topics }
+}
+
 function buildSubjectDrafts(
   extraction: EditalExtraction,
   focusSubject: string,
@@ -247,21 +275,51 @@ function buildSubjectDrafts(
     .toLowerCase()
     .trim()
 
-  const explicitSubjects = extraction.subjects.flatMap((subject) => {
-    if (subject.role) {
-      return [
-        {
-          name: subject.role,
-          syllabus: uniqueStrings(subject.topics),
-        },
-      ]
+  const subjectGroups = new Map<string, { name: string; syllabus: string[] }>()
+
+  function addSubject(name: string, syllabus: string[]) {
+    const cleanName = normalizeWhitespace(name).replace(/[:.;,-]+$/, '')
+    if (cleanName.length < 3) return
+    const key = cleanName
+      .normalize('NFD')
+      .replace(/\p{Mark}/gu, '')
+      .toLowerCase()
+    const current = subjectGroups.get(key)
+    const topics = uniqueStrings(syllabus.length > 0 ? syllabus : [cleanName])
+    subjectGroups.set(key, {
+      name: current?.name ?? cleanName,
+      syllabus: uniqueStrings([...(current?.syllabus ?? []), ...topics]),
+    })
+  }
+
+  for (const subject of extraction.subjects) {
+    const topics = uniqueStrings(subject.topics)
+    if (subject.role && topics.length > 0) {
+      addSubject(subject.role, topics)
+      continue
     }
 
-    return uniqueStrings(subject.topics).map((topic) => ({
-      name: topic,
-      syllabus: [topic],
-    }))
-  })
+    if (subject.role) {
+      addSubject(subject.role, [subject.role])
+      continue
+    }
+
+    const parsedByColon = topics
+      .map(subjectNameFromTopic)
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    if (parsedByColon.length > 0) {
+      for (const parsed of parsedByColon) {
+        addSubject(parsed.name, parsed.topics)
+      }
+      continue
+    }
+
+    if (topics.length > 0) {
+      addSubject(focusSubject || extraction.opportunities[0]?.role || 'Conteudo programatico', topics)
+    }
+  }
+
+  const explicitSubjects = [...subjectGroups.values()]
 
   const fallbackNames = uniqueStrings([
     normalizedFocus ? focusSubject : '',

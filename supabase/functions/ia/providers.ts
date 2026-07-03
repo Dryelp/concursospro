@@ -17,6 +17,9 @@ const systemPrompt = [
   'Responda somente com JSON valido no schema fornecido.',
   'Nao invente campos ausentes; use null, arrays vazios e confidence menor quando faltar evidencia.',
   'Preserve datas no formato original encontrado no texto, preferencialmente dd/mm/aaaa.',
+  'No campo subjects, cada item deve representar uma disciplina/materia do conteudo programatico: role = nome da disciplina e topics = lista detalhada dos assuntos que o candidato deve estudar nessa disciplina.',
+  'Nao coloque apenas nomes de materias em subjects.topics. Se encontrar "Lingua Portuguesa: interpretacao, ortografia", retorne role "Lingua Portuguesa" e topics ["interpretacao", "ortografia"].',
+  'Procure anexos e secoes como Conteudo Programatico, Conhecimentos Gerais, Conhecimentos Especificos, Programa de Prova e Objetos de Avaliacao; extraia o maximo de topicos sustentados pelo texto.',
   'Extraia tambem examStructure quando houver matriz da prova: total de questoes, tempo, formato e quantidade/peso por disciplina.',
   'Se a matriz da prova estiver incompleta, preencha apenas o que estiver sustentado pelo edital e registre warnings.',
   'Use warnings para ambiguidade relevante e evidence para trechos curtos que sustentem os principais campos.',
@@ -37,6 +40,7 @@ function buildUserPrompt(payload: EditalAiPayload): string {
     payload.heuristicExtraction
       ? `Fallback heuristico local: ${JSON.stringify(payload.heuristicExtraction)}`
       : 'Fallback heuristico local: null',
+    'Regra obrigatoria para conteudo programatico: subjects deve conter disciplinas reais, e cada disciplina precisa carregar seus topicos de estudo. Nao basta listar "Lingua Portuguesa" ou "Matematica"; extraia os assuntos internos de cada uma.',
     'Texto do edital abaixo:',
     textBlock,
   ].join('\n\n')
@@ -103,6 +107,7 @@ async function callGemini(payload: EditalAiPayload): Promise<ProviderExtractionR
         ],
         generationConfig: {
           temperature: 0.1,
+          maxOutputTokens: 16000,
           responseMimeType: 'application/json',
           responseSchema: editalExtractionJsonSchema,
         },
@@ -153,6 +158,7 @@ async function callOpenRouter(payload: EditalAiPayload): Promise<ProviderExtract
     body: JSON.stringify({
       model,
       temperature: 0.1,
+      max_tokens: 12000,
       response_format: {
         type: 'json_schema',
         json_schema: {

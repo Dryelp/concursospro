@@ -20,6 +20,39 @@ function buildPreview(textContent: string): string {
   return compactWhitespace(textContent).slice(0, 2000)
 }
 
+function pageItemsToLines(items: unknown[]): string {
+  const rows: Array<{ y: number; items: Array<{ x: number; text: string }> }> = []
+
+  for (const item of items) {
+    const textItem = item as { str?: string; transform?: number[] }
+    const text = compactWhitespace(textItem.str ?? '')
+    if (!text) continue
+
+    const transform = Array.isArray(textItem.transform) ? textItem.transform : []
+    const x = Number(transform[4] ?? 0)
+    const y = Number(transform[5] ?? rows.length)
+    const row = rows.find((candidate) => Math.abs(candidate.y - y) <= 2)
+
+    if (row) {
+      row.items.push({ x, text })
+    } else {
+      rows.push({ y, items: [{ x, text }] })
+    }
+  }
+
+  return rows
+    .sort((left, right) => right.y - left.y)
+    .map((row) =>
+      row.items
+        .sort((left, right) => left.x - right.x)
+        .map((item) => item.text)
+        .join(' '),
+    )
+    .map(compactWhitespace)
+    .filter(Boolean)
+    .join('\n')
+}
+
 async function extractPdfText(file: File): Promise<ExtractEditalTextResult> {
   const buffer = await file.arrayBuffer()
   const loadingTask = getDocument({
@@ -37,11 +70,9 @@ async function extractPdfText(file: File): Promise<ExtractEditalTextResult> {
     for (let pageIndex = 1; pageIndex <= pdf.numPages; pageIndex += 1) {
       const page = await pdf.getPage(pageIndex)
       const textContent = await page.getTextContent()
-      const pageText = textContent.items
-        .map((item) => ('str' in item ? item.str : ''))
-        .join(' ')
+      const pageText = pageItemsToLines([...textContent.items])
 
-      pages.push(compactWhitespace(pageText))
+      pages.push(pageText)
     }
 
     const textContent = pages.filter(Boolean).join('\n\n')
