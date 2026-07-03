@@ -281,6 +281,74 @@ function isSelectionPhase(value: string | null | undefined): boolean {
   return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
 }
 
+function isStudyTopic(value: string | null | undefined): value is string {
+  const topic = normalizeWhitespace(value ?? '')
+  if (topic.length < 4) return false
+
+  return !/^\d+(?:[,.]\d+)?\s*(?:pontos?|quest(?:ao|oes|ões))$/i.test(topic) &&
+    !/^(?:pontos?|pontuacao|pontuação|valor|nota)\b/i.test(topic)
+}
+
+function isBroadSubjectName(value: string | null | undefined): boolean {
+  const normalized = normalizeForCompare(value ?? '')
+
+  return /\b(conhecimentos gerais|conhecimentos especificos|conhecimentos basicos|ciencias humanas|ciencias naturais|atualidades)\b/.test(normalized)
+}
+
+function subjectNameFromKeywordTopic(topic: string): string | null {
+  const normalized = normalizeForCompare(topic)
+
+  if (/\b(historia|historico|brasil colonia|brasil imperio|republica|idade media|idade moderna)\b/.test(normalized)) {
+    return 'História'
+  }
+
+  if (/\b(geografia|cartografia|clima|relevo|hidrografia|urbanizacao|globalizacao|populacao|territorio)\b/.test(normalized)) {
+    return 'Geografia'
+  }
+
+  if (/\b(filosofia|etica|moral|socrates|platao|aristoteles|kant|contratualismo)\b/.test(normalized)) {
+    return 'Filosofia'
+  }
+
+  if (/\b(sociologia|sociedade|cultura|cidadania|movimentos sociais|desigualdade social|trabalho e sociedade)\b/.test(normalized)) {
+    return 'Sociologia'
+  }
+
+  if (/\b(biologia|ecologia|genetica|celula|fisiologia|evolucao|botanica|zoologia)\b/.test(normalized)) {
+    return 'Biologia'
+  }
+
+  if (/\b(quimica|atomo|molecula|substancia|mistura|reacao|estequiometria|tabela periodica)\b/.test(normalized)) {
+    return 'Química'
+  }
+
+  if (/\b(fisica|mecanica|cinematica|dinamica|optica|eletricidade|termodinamica|ondulatoria)\b/.test(normalized)) {
+    return 'Física'
+  }
+
+  return null
+}
+
+function splitBroadSubjectTopics(role: string | null | undefined, topics: string[]) {
+  if (!isBroadSubjectName(role)) return []
+
+  const grouped = new Map<string, string[]>()
+
+  for (const topic of topics.filter(isStudyTopic)) {
+    const parsed = subjectNameFromTopic(topic)
+    const name = parsed?.name ?? subjectNameFromKeywordTopic(topic)
+    const topicItems = parsed?.topics ?? [topic]
+    if (!name) continue
+
+    grouped.set(name, uniqueStrings([...(grouped.get(name) ?? []), ...topicItems]))
+  }
+
+  return [...grouped.entries()].map(([name, groupedTopics]) => ({
+    name,
+    topics: groupedTopics,
+  }))
+}
+
 function sameSubjectName(left: string | null | undefined, right: string | null | undefined): boolean {
   const normalizedLeft = normalizeForCompare(left ?? '')
   const normalizedRight = normalizeForCompare(right ?? '')
@@ -340,7 +408,7 @@ function buildSubjectDrafts(
       .toLowerCase()
     const current = subjectGroups.get(key)
     const topics = uniqueStrings(syllabus.length > 0 ? syllabus : [cleanName]).filter(
-      (topic) => !isSelectionPhase(topic),
+      (topic) => !isSelectionPhase(topic) && isStudyTopic(topic),
     )
     if (topics.length === 0) return
     subjectGroups.set(key, {
@@ -350,7 +418,26 @@ function buildSubjectDrafts(
   }
 
   for (const subject of extraction.subjects) {
-    const topics = uniqueStrings(subject.topics)
+    const topics = uniqueStrings(subject.topics).filter(isStudyTopic)
+    const splitBroadSubjects = splitBroadSubjectTopics(subject.role, topics)
+    if (splitBroadSubjects.length > 0) {
+      for (const splitSubject of splitBroadSubjects) {
+        addSubject(splitSubject.name, splitSubject.topics)
+      }
+      continue
+    }
+
+    const parsedByColon = topics
+      .map(subjectNameFromTopic)
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+
+    if (parsedByColon.length > 0 && (!subject.role || isBroadSubjectName(subject.role))) {
+      for (const parsed of parsedByColon) {
+        addSubject(parsed.name, parsed.topics)
+      }
+      continue
+    }
+
     if (subject.role && topics.length > 0) {
       addSubject(subject.role, topics)
       continue
@@ -361,9 +448,6 @@ function buildSubjectDrafts(
       continue
     }
 
-    const parsedByColon = topics
-      .map(subjectNameFromTopic)
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
     if (parsedByColon.length > 0) {
       for (const parsed of parsedByColon) {
         addSubject(parsed.name, parsed.topics)
@@ -379,7 +463,7 @@ function buildSubjectDrafts(
   for (const discipline of extraction.examStructure.disciplines) {
     if (!discipline.name || isSelectionPhase(discipline.name)) continue
     const syllabus = findSyllabusForMatrixDiscipline(extraction, discipline.name)
-    addSubject(discipline.name, syllabus.length ? syllabus : [discipline.notes ?? discipline.name])
+    addSubject(discipline.name, syllabus.length ? syllabus : [])
   }
 
   const explicitSubjects = [...subjectGroups.values()]

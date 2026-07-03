@@ -52,6 +52,8 @@ function subjectTopics(subject: SimulationSubjectOption | undefined) {
     .filter(
       (topic) =>
         topic.length >= 4 &&
+        !/^\d+(?:[,.]\d+)?\s*(?:pontos?|quest(?:ao|oes|ões))$/i.test(topic) &&
+        !/^(?:pontos?|pontuacao|pontuação|valor|nota)\b/i.test(topic) &&
         !/^edital\b/i.test(topic) &&
         !/^n[o.]?\s*\d/i.test(topic) &&
         !/^cfsd$/i.test(topic),
@@ -284,7 +286,7 @@ JSON esperado: ${expectedJson}`,
       <input type="hidden" name="subjectId" value={subjectId} />
 
       <div className="rounded-3xl border border-white/10 bg-ink-950/45 p-3">
-        <div className="grid gap-3 lg:grid-cols-[1.05fr_1.35fr_150px] lg:items-start">
+        <div className="grid gap-3 2xl:grid-cols-[minmax(240px,0.95fr)_minmax(260px,1.15fr)_150px] 2xl:items-start">
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
             <div className="mb-3 flex items-center justify-between gap-3">
               <span className="label mb-0">Disciplina</span>
@@ -301,7 +303,7 @@ JSON esperado: ${expectedJson}`,
                 placeholder="Buscar disciplina"
               />
             </div>
-            <div className="grid max-h-60 gap-2 overflow-y-auto pr-1">
+            <div className="grid max-h-52 gap-2 overflow-y-auto pr-1">
               {filteredSubjects.map((subject) => (
                 <button
                   key={subject.id}
@@ -329,7 +331,7 @@ JSON esperado: ${expectedJson}`,
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="label mb-0">Assunto obrigatório</span>
+              <span className="label mb-0">Assunto</span>
               <span className="text-[11px] text-slate-600">{topics.length} tópicos</span>
             </div>
             <div className="relative">
@@ -373,7 +375,11 @@ JSON esperado: ${expectedJson}`,
                   </button>
                 ))}
               </div>
-            ) : null}
+            ) : (
+              <p className="mt-3 rounded-2xl border border-atlas-yellow/15 bg-atlas-yellow/10 px-3 py-2 text-xs leading-5 text-atlas-yellow">
+                Nenhum tópico confiável foi extraído para esta disciplina. Digite um assunto específico ou reenvie o edital para a IA reler.
+              </p>
+            )}
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">

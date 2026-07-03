@@ -63,6 +63,14 @@ function subjectSyllabus(subject: Subject): string[] {
     : []
 }
 
+function isStudyTopic(value: string | null | undefined): value is string {
+  const topic = value?.trim() ?? ''
+  if (topic.length < 4) return false
+
+  return !/^\d+(?:[,.]\d+)?\s*(?:pontos?|quest(?:ao|oes|ões))$/i.test(topic) &&
+    !/^(?:pontos?|pontuacao|pontuação|valor|nota)\b/i.test(topic)
+}
+
 function buildSimulationSubjects(
   subjects: Subject[],
   examStructure: ExamStructure,
@@ -89,7 +97,7 @@ function buildSimulationSubjects(
       name: discipline.name,
       syllabus: relatedTopics.length
         ? relatedTopics
-        : [discipline.notes, discipline.name].filter((item): item is string => Boolean(item)),
+        : [discipline.notes].filter(isStudyTopic),
       isVirtual: true,
       questionCount: discipline.questionCount,
     })
