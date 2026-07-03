@@ -264,6 +264,11 @@ function isSelectionPhase(value: string): boolean {
   return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
 }
 
+function isProgramContentHeading(value: string): boolean {
+  const normalized = normalizeForCompare(value)
+  return /conteudo programatico|conteudos programaticos|programa da prova|programa de prova|programas de prova|conteudo da prova|conteudo das provas|conhecimentos gerais|conhecimentos especificos|objetos de avaliacao|disciplinas cobradas|materias cobradas/.test(normalized)
+}
+
 function splitTopics(value: string): string[] {
   return value
     .split(/\r?\n|[;•]/)
@@ -272,11 +277,7 @@ function splitTopics(value: string): string[] {
 }
 
 function extractSubjects(lines: string[]) {
-  const headingIndex = lines.findIndex((line) =>
-    /conteudo programatico|conteúdo programático|disciplinas|materias cobradas|matérias cobradas/i.test(
-      line,
-    ),
-  )
+  const headingIndex = lines.findIndex(isProgramContentHeading)
 
   if (headingIndex < 0) {
     return []

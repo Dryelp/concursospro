@@ -28,10 +28,66 @@ const systemPrompt = [
   'Use warnings para ambiguidade relevante e evidence para trechos curtos que sustentem os principais campos.',
 ].join(' ')
 
+const contentProgramKeywords = [
+  'conteudo programatico',
+  'conteudos programaticos',
+  'programa da prova',
+  'programa de prova',
+  'programas de prova',
+  'conteudo da prova',
+  'conteudo das provas',
+  'conhecimentos gerais',
+  'conhecimentos especificos',
+  'objetos de avaliacao',
+  'disciplinas cobradas',
+  'materias cobradas',
+]
+
+function buildRelevantTextBlock(textContent: string): string {
+  const trimmed = textContent.trim()
+  if (!trimmed) {
+    return 'Sem texto extraido localmente. Leia o arquivo anexado por visao/OCR e extraia apenas dados sustentados pelo documento.'
+  }
+
+  const maxChars = 180_000
+  if (trimmed.length <= maxChars) {
+    return trimmed
+  }
+
+  const lines = textContent.split(/\r?\n/)
+  const headingIndexes = lines
+    .map((line, index) => ({ line: normalizeForCompare(line), index }))
+    .filter(({ line }) => contentProgramKeywords.some((keyword) => line.includes(keyword)))
+    .map(({ index }) => index)
+
+  const sections: string[] = []
+  sections.push(`=== INICIO DO EDITAL ===\n${lines.slice(0, 140).join('\n')}`)
+
+  for (const index of headingIndexes.slice(0, 10)) {
+    const start = Math.max(0, index - 12)
+    const end = Math.min(lines.length, index + 260)
+    sections.push(`=== TRECHO PRIORITARIO DE CONTEUDO PROGRAMATICO - LINHA ${index + 1} ===\n${lines.slice(start, end).join('\n')}`)
+  }
+
+  sections.push(`=== FINAL/ANEXOS DO EDITAL ===\n${lines.slice(-520).join('\n')}`)
+
+  const relevant = sections.join('\n\n')
+  if (relevant.length <= maxChars) {
+    return relevant
+  }
+
+  const priority = sections
+    .filter((section) => section.includes('TRECHO PRIORITARIO'))
+    .join('\n\n')
+    .slice(0, 145_000)
+  const intro = sections[0].slice(0, 18_000)
+  const tail = sections.at(-1)?.slice(0, 17_000) ?? ''
+
+  return [intro, priority, tail].filter(Boolean).join('\n\n')
+}
+
 function buildUserPrompt(payload: EditalAiPayload): string {
-  const textBlock = payload.textContent.trim()
-    ? payload.textContent.slice(0, 90000)
-    : 'Sem texto extraido localmente. Leia o arquivo anexado por visao/OCR e extraia apenas dados sustentados pelo documento.'
+  const textBlock = buildRelevantTextBlock(payload.textContent)
 
   return [
     `Arquivo: ${payload.fileName}`,
@@ -45,6 +101,7 @@ function buildUserPrompt(payload: EditalAiPayload): string {
       : 'Fallback heuristico local: null',
     'Regra obrigatoria para conteudo programatico: subjects deve conter disciplinas reais, e cada disciplina precisa carregar seus topicos de estudo. Nao basta listar "Lingua Portuguesa" ou "Matematica"; extraia os assuntos internos de cada uma.',
     'Regra de exclusao: nao use fases do concurso como materia. TAF/teste fisico/avaliacao psicologica/exame medico/investigacao social/curso de formacao/prova de titulos nao entram em subjects.',
+    'Prioridade absoluta: se houver trechos marcados como TRECHO PRIORITARIO DE CONTEUDO PROGRAMATICO, extraia subjects desses trechos e ignore listas de etapas/fases do concurso.',
     'Texto do edital abaixo:',
     textBlock,
   ].join('\n\n')
@@ -142,7 +199,6 @@ async function callGemini(payload: EditalAiPayload): Promise<ProviderExtractionR
     throw new Error('GEMINI_API_KEY ausente.')
   }
 
-  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-pro'
   const userParts: Array<
     | { text: string }
     | { inlineData: { mimeType: string; data: string } }
@@ -157,55 +213,77 @@ async function callGemini(payload: EditalAiPayload): Promise<ProviderExtractionR
     })
   }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPrompt }],
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: userParts,
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 16000,
-          responseMimeType: 'application/json',
-          responseSchema: editalExtractionJsonSchema,
-        },
-      }),
-    },
+  const models = [
+    Deno.env.get('GEMINI_EDITAL_MODEL')?.trim(),
+    Deno.env.get('GEMINI_EXTRACT_MODEL')?.trim(),
+    'gemini-3.1-pro-preview',
+    'gemini-2.5-pro',
+    Deno.env.get('GEMINI_MODEL')?.trim(),
+    'gemini-2.5-flash',
+  ].filter((model, index, list): model is string =>
+    Boolean(model) && list.indexOf(model) === index
   )
+  const failures: string[] = []
 
-  if (!response.ok) {
-    throw new Error(`Gemini retornou ${response.status}.`)
+  for (const model of models) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: userParts,
+            },
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 32000,
+            responseMimeType: 'application/json',
+            responseSchema: editalExtractionJsonSchema,
+          },
+        }),
+      },
+    )
+
+    if (!response.ok) {
+      failures.push(`${model}:${response.status}`)
+      continue
+    }
+
+    const data = await response.json()
+    const rawText = data?.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text ?? '')
+      .join('\n')
+
+    if (!rawText) {
+      failures.push(`${model}:empty`)
+      continue
+    }
+
+    try {
+      return {
+        provider: 'gemini',
+        model,
+        extraction: sanitizeExtractionSubjects(
+          normalizeEditalExtraction(tryParseJson(rawText)),
+          payload.heuristicExtraction,
+        ),
+        warnings: [],
+      }
+    } catch (error) {
+      failures.push(`${model}:${error instanceof Error ? error.message : 'invalid-json'}`)
+    }
   }
 
-  const data = await response.json()
-  const rawText = data?.candidates?.[0]?.content?.parts
-    ?.map((part: { text?: string }) => part.text ?? '')
-    .join('\n')
-
-  if (!rawText) {
-    throw new Error('Gemini nao retornou conteudo estruturado.')
-  }
-
-  return {
-    provider: 'gemini',
-    model,
-    extraction: sanitizeExtractionSubjects(
-      normalizeEditalExtraction(tryParseJson(rawText)),
-      payload.heuristicExtraction,
-    ),
-    warnings: [],
-  }
+  throw new Error(`Gemini nao conseguiu extrair edital (${failures.join(', ')}).`)
 }
 
 async function callOpenRouter(payload: EditalAiPayload): Promise<ProviderExtractionResult> {

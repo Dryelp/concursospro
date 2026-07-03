@@ -49,4 +49,32 @@ ANEXO II
     ])
     expect(JSON.stringify(extraction.subjects)).not.toMatch(/capacitacao|corrida|barra/i)
   })
+
+  it('encontra conteudo programatico com acento depois de secoes de fases', () => {
+    const extraction = extractEditalHeuristically({
+      fileName: 'edital.pdf',
+      classification: undefined,
+      textContent: `
+ETAPAS DO CONCURSO
+Teste de capacitacao fisica.
+Avaliacao psicologica.
+
+ANEXO III
+CONTEÚDO PROGRAMÁTICO
+NOÇÕES DE DIREITO ADMINISTRATIVO: Atos administrativos; Poderes administrativos; Licitações.
+NOÇÕES DE INFORMÁTICA: Sistemas operacionais; Internet; Segurança da informação.
+`,
+    })
+
+    expect(extraction.subjects).toEqual([
+      {
+        role: 'NOÇÕES DE DIREITO ADMINISTRATIVO',
+        topics: ['Atos administrativos', 'Poderes administrativos', 'Licitações'],
+      },
+      {
+        role: 'NOÇÕES DE INFORMÁTICA',
+        topics: ['Sistemas operacionais', 'Internet', 'Segurança da informação'],
+      },
+    ])
+  })
 })

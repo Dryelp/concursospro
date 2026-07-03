@@ -147,6 +147,11 @@ function isSelectionPhase(value: string): boolean {
   return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
 }
 
+function isProgramContentHeading(value: string): boolean {
+  const normalized = normalizeForCompare(value)
+  return /conteudo programatico|conteudos programaticos|programa da prova|programa de prova|programas de prova|conteudo da prova|conteudo das provas|conhecimentos gerais|conhecimentos especificos|objetos de avaliacao|disciplinas cobradas|materias cobradas/.test(normalized)
+}
+
 function splitTopics(value: string): string[] {
   return value
     .split(/\r?\n|[;•]/)
@@ -155,25 +160,7 @@ function splitTopics(value: string): string[] {
 }
 
 function extractSubjects(lines: string[]): Array<{ role: string | null; topics: string[] }> {
-  const headingIndex = lines.findIndex((line) =>
-    /conteudo programatico|conteÃºdo programÃ¡tico|disciplinas|materias cobradas|matÃ©rias cobradas/i.test(
-      line,
-    ),
-  )
-
-  if (headingIndex < 0) return []
-
-  const subjects: Array<{ role: string | null; topics: string[] }> = []
-  let current: { role: string; topics: string[] } | null = null
-
-  function flushCurrent() {
-    if (!current) return
-    const topics = dedupeStrings(current.topics).slice(0, 80)
-    subjects.push({ role: current.role, topics })
-    current = null
-  }
-
-  for (const rawLine of lines.slice(headingIndex + 1, headingIndex + 180)) {
+  const headingIndex = lines.findIndex(isProgramContentHeading) {
     const line = compactWhitespace(rawLine)
     const normalized = normalizeForCompare(line)
     if (!line) continue
