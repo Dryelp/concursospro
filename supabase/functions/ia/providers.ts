@@ -20,6 +20,9 @@ const systemPrompt = [
   'No campo subjects, cada item deve representar uma disciplina/materia do conteudo programatico: role = nome da disciplina e topics = lista detalhada dos assuntos que o candidato deve estudar nessa disciplina.',
   'Nao coloque apenas nomes de materias em subjects.topics. Se encontrar "Lingua Portuguesa: interpretacao, ortografia", retorne role "Lingua Portuguesa" e topics ["interpretacao", "ortografia"].',
   'Procure anexos e secoes como Conteudo Programatico, Conhecimentos Gerais, Conhecimentos Especificos, Programa de Prova e Objetos de Avaliacao; extraia o maximo de topicos sustentados pelo texto.',
+  'subjects deve conter somente conteudo de estudo da prova objetiva/escrita. Nao transforme etapas do concurso em materia.',
+  'Nunca inclua como subject: teste de aptidao/capacitacao fisica, TAF, avaliacao psicologica, exame medico, inspecao de saude, investigacao social, prova de titulos, heteroidentificacao, procedimento documental, curso de formacao ou fases semelhantes.',
+  'Se o edital listar fases do certame, use isso apenas como contexto; procure a secao "conteudo programatico", "programa da prova", "conhecimentos" ou "objetos de avaliacao" para preencher subjects.',
   'Extraia tambem examStructure quando houver matriz da prova: total de questoes, tempo, formato e quantidade/peso por disciplina.',
   'Se a matriz da prova estiver incompleta, preencha apenas o que estiver sustentado pelo edital e registre warnings.',
   'Use warnings para ambiguidade relevante e evidence para trechos curtos que sustentem os principais campos.',
@@ -41,9 +44,75 @@ function buildUserPrompt(payload: EditalAiPayload): string {
       ? `Fallback heuristico local: ${JSON.stringify(payload.heuristicExtraction)}`
       : 'Fallback heuristico local: null',
     'Regra obrigatoria para conteudo programatico: subjects deve conter disciplinas reais, e cada disciplina precisa carregar seus topicos de estudo. Nao basta listar "Lingua Portuguesa" ou "Matematica"; extraia os assuntos internos de cada uma.',
+    'Regra de exclusao: nao use fases do concurso como materia. TAF/teste fisico/avaliacao psicologica/exame medico/investigacao social/curso de formacao/prova de titulos nao entram em subjects.',
     'Texto do edital abaixo:',
     textBlock,
   ].join('\n\n')
+}
+
+function normalizeForCompare(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Mark}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isSelectionPhase(value: string | null | undefined): boolean {
+  const normalized = normalizeForCompare(value ?? '')
+  if (!normalized) return false
+
+  return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
+}
+
+function isUsefulSubject(subject: EditalExtraction['subjects'][number]): boolean {
+  if (isSelectionPhase(subject.role)) return false
+  const topics = subject.topics.filter((topic) => !isSelectionPhase(topic))
+  return Boolean(subject.role || topics.length) && topics.length > 0
+}
+
+function sanitizeExtractionSubjects(
+  extraction: EditalExtraction,
+  fallback: EditalExtraction | null | undefined,
+): EditalExtraction {
+  const cleanedSubjects = extraction.subjects
+    .map((subject) => ({
+      ...subject,
+      topics: subject.topics.filter((topic) => !isSelectionPhase(topic)),
+    }))
+    .filter(isUsefulSubject)
+
+  if (cleanedSubjects.length > 0) {
+    return { ...extraction, subjects: cleanedSubjects }
+  }
+
+  const fallbackSubjects = fallback?.subjects
+    .map((subject) => ({
+      ...subject,
+      topics: subject.topics.filter((topic) => !isSelectionPhase(topic)),
+    }))
+    .filter(isUsefulSubject)
+
+  if (fallbackSubjects?.length) {
+    return {
+      ...extraction,
+      subjects: fallbackSubjects,
+      warnings: [
+        ...extraction.warnings,
+        'Subjects do provider pareciam fases do concurso; usando conteudo programatico heuristico.',
+      ],
+    }
+  }
+
+  return {
+    ...extraction,
+    subjects: [],
+    warnings: [
+      ...extraction.warnings,
+      'Nao foi possivel confirmar conteudo programatico da prova objetiva/escrita.',
+    ],
+  }
 }
 
 function tryParseJson(raw: string): unknown {
@@ -131,7 +200,10 @@ async function callGemini(payload: EditalAiPayload): Promise<ProviderExtractionR
   return {
     provider: 'gemini',
     model,
-    extraction: normalizeEditalExtraction(tryParseJson(rawText)),
+    extraction: sanitizeExtractionSubjects(
+      normalizeEditalExtraction(tryParseJson(rawText)),
+      payload.heuristicExtraction,
+    ),
     warnings: [],
   }
 }
@@ -194,7 +266,10 @@ async function callOpenRouter(payload: EditalAiPayload): Promise<ProviderExtract
   return {
     provider: 'openrouter',
     model,
-    extraction: normalizeEditalExtraction(typeof rawContent === 'string' ? tryParseJson(rawContent) : rawContent),
+    extraction: sanitizeExtractionSubjects(
+      normalizeEditalExtraction(typeof rawContent === 'string' ? tryParseJson(rawContent) : rawContent),
+      payload.heuristicExtraction,
+    ),
     warnings: [],
   }
 }

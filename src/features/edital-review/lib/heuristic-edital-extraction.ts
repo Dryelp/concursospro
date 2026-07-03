@@ -254,15 +254,21 @@ function looksLikeSubjectTitle(value: string): boolean {
   if (title.length < 3 || title.length > 120 || letters.length < 3) return false
   if (/^(conteudo programatico|conhecimentos gerais|conhecimentos especificos|prova objetiva|disciplinas|materias cobradas)$/i.test(normalized)) return false
   if (/^(anexo|cronograma|bibliografia|das inscricoes|do concurso|dos recursos|resultado|classificacao)/i.test(normalized)) return false
+  if (isSelectionPhase(normalized)) return false
 
   return upperRatio >= 0.7 || /^(lingua|direito|nocoes|matematica|informatica|raciocinio|legislacao|administracao|portugues|conhecimentos)/i.test(normalized)
+}
+
+function isSelectionPhase(value: string): boolean {
+  const normalized = normalizeForCompare(value)
+  return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
 }
 
 function splitTopics(value: string): string[] {
   return value
     .split(/\r?\n|[;•]/)
     .map(cleanTopic)
-    .filter((topic) => topic.length >= 4)
+    .filter((topic) => topic.length >= 4 && !isSelectionPhase(topic))
 }
 
 function extractSubjects(lines: string[]) {
@@ -290,7 +296,7 @@ function extractSubjects(lines: string[]) {
     const line = compactWhitespace(rawLine)
     const normalized = normalizeForCompare(line)
     if (!line) continue
-    if (/^(anexo|cronograma|bibliografia|resultado|classificacao|dos recursos|das inscricoes)/i.test(normalized)) {
+    if (/^(anexo|cronograma|bibliografia|resultado|classificacao|dos recursos|das inscricoes)/i.test(normalized) || isSelectionPhase(normalized)) {
       if (subjects.length || current) break
       continue
     }

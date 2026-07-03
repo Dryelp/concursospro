@@ -28,4 +28,25 @@ ANEXO II
       },
     ])
   })
+
+  it('nao transforma teste fisico em disciplina de estudo', () => {
+    const extraction = extractEditalHeuristically({
+      fileName: 'edital.pdf',
+      classification: undefined,
+      textContent: `
+CONTEUDO PROGRAMATICO
+LINGUA PORTUGUESA: Interpretacao de textos; Ortografia oficial.
+MATEMATICA: Porcentagem; Razao e proporcao.
+TESTE DE CAPACITACAO FISICA
+Flexao de braco; Corrida de 12 minutos; Barra fixa.
+ANEXO II
+`,
+    })
+
+    expect(extraction.subjects.map((subject) => subject.role)).toEqual([
+      'LINGUA PORTUGUESA',
+      'MATEMATICA',
+    ])
+    expect(JSON.stringify(extraction.subjects)).not.toMatch(/capacitacao|corrida|barra/i)
+  })
 })

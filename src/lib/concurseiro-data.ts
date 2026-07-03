@@ -265,6 +265,22 @@ function subjectNameFromTopic(topic: string): { name: string; topics: string[] }
   return { name, topics }
 }
 
+function normalizeForCompare(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Mark}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isSelectionPhase(value: string | null | undefined): boolean {
+  const normalized = normalizeForCompare(value ?? '')
+  if (!normalized) return false
+
+  return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
+}
+
 function buildSubjectDrafts(
   extraction: EditalExtraction,
   focusSubject: string,
@@ -279,13 +295,17 @@ function buildSubjectDrafts(
 
   function addSubject(name: string, syllabus: string[]) {
     const cleanName = normalizeWhitespace(name).replace(/[:.;,-]+$/, '')
+    if (isSelectionPhase(cleanName)) return
     if (cleanName.length < 3) return
     const key = cleanName
       .normalize('NFD')
       .replace(/\p{Mark}/gu, '')
       .toLowerCase()
     const current = subjectGroups.get(key)
-    const topics = uniqueStrings(syllabus.length > 0 ? syllabus : [cleanName])
+    const topics = uniqueStrings(syllabus.length > 0 ? syllabus : [cleanName]).filter(
+      (topic) => !isSelectionPhase(topic),
+    )
+    if (topics.length === 0) return
     subjectGroups.set(key, {
       name: current?.name ?? cleanName,
       syllabus: uniqueStrings([...(current?.syllabus ?? []), ...topics]),
