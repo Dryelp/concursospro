@@ -12,10 +12,13 @@ import {
 
 import { SectionEmpty } from '@/components/section-empty'
 import { FullSimulationGenerator } from '@/app/(app)/simulados/full-simulation-generator'
-import { SimulationGenerator } from '@/app/(app)/simulados/generator'
+import {
+  SimulationGenerator,
+  type SimulationSubjectOption,
+} from '@/app/(app)/simulados/generator'
 import { QuestionList } from '@/app/(app)/simulados/question-list'
 import type { MockQuestion, Subject } from '@/lib/database.types'
-import { resolveExamStructure } from '@/lib/exam-structure'
+import { normalizeSubjectName, resolveExamStructure, type ExamStructure } from '@/lib/exam-structure'
 import { subjectColor } from '@/lib/format'
 import { requireWorkspace } from '@/lib/workspace'
 
@@ -52,6 +55,48 @@ function buildPerformance(subjects: Subject[], answered: SubjectStatsRow[]) {
     })
     .filter((item) => item.total > 0)
     .sort((a, b) => b.total - a.total || a.percent - b.percent)
+}
+
+function subjectSyllabus(subject: Subject): string[] {
+  return Array.isArray(subject.syllabus)
+    ? subject.syllabus.filter((topic): topic is string => typeof topic === 'string')
+    : []
+}
+
+function buildSimulationSubjects(
+  subjects: Subject[],
+  examStructure: ExamStructure,
+): SimulationSubjectOption[] {
+  const options: SimulationSubjectOption[] = subjects.map((subject) => ({
+    id: subject.id,
+    name: subject.name,
+    syllabus: subjectSyllabus(subject),
+  }))
+  const existingNames = new Set(options.map((subject) => normalizeSubjectName(subject.name)))
+
+  for (const discipline of examStructure.disciplines) {
+    const key = normalizeSubjectName(discipline.name)
+    if (!key || existingNames.has(key)) continue
+
+    const relatedSubject = subjects.find((subject) => {
+      const subjectKey = normalizeSubjectName(subject.name)
+      return subjectKey.includes(key) || key.includes(subjectKey)
+    })
+    const relatedTopics = relatedSubject ? subjectSyllabus(relatedSubject) : []
+
+    options.push({
+      id: `matrix:${key}`,
+      name: discipline.name,
+      syllabus: relatedTopics.length
+        ? relatedTopics
+        : [discipline.notes, discipline.name].filter((item): item is string => Boolean(item)),
+      isVirtual: true,
+      questionCount: discipline.questionCount,
+    })
+    existingNames.add(key)
+  }
+
+  return options
 }
 
 function MetricCard({
@@ -193,6 +238,7 @@ export default async function SimuladosPage({
   const performance = buildPerformance(subjects, (answeredStatsRows ?? []) as SubjectStatsRow[])
   const structuredData = Array.isArray(extractionRows) ? extractionRows[0]?.structured_data : null
   const examStructure = resolveExamStructure(structuredData, subjects, project.board)
+  const simulationSubjects = buildSimulationSubjects(subjects, examStructure)
 
   return (
     <div className="dashboard-reveal space-y-5">
@@ -271,12 +317,12 @@ export default async function SimuladosPage({
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0">
-          {subjects.length ? (
+          {simulationSubjects.length ? (
             <div className="space-y-5">
               <SimulationGenerator
                 projectId={project.id}
                 projectBoard={project.board}
-                subjects={subjects}
+                subjects={simulationSubjects}
                 recentQuestions={[...pending, ...answered].map((question) => ({
                   subject_id: question.subject_id,
                   topic: question.topic,

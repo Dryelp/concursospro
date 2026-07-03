@@ -9,7 +9,7 @@ import {
   getExamBoardProfile,
   getExamBoardPromptContext,
 } from '@/lib/bancas'
-import type { Database, Subject } from '@/lib/database.types'
+import type { Database } from '@/lib/database.types'
 import { callIA } from '@/lib/ia'
 import { questionHasRequiredHighlight } from '@/lib/question-text'
 import { questionsSchema } from '@/lib/schemas/study-content'
@@ -23,6 +23,14 @@ type RecentQuestion = {
   statement: string
 }
 
+export type SimulationSubjectOption = {
+  id: string
+  name: string
+  syllabus: string[]
+  isVirtual?: boolean
+  questionCount?: number | null
+}
+
 function GenerateButton({ pending }: { pending: boolean }) {
   return (
     <button className="button-primary w-full justify-center xl:w-auto" disabled={pending}>
@@ -31,16 +39,15 @@ function GenerateButton({ pending }: { pending: boolean }) {
       ) : (
         <Sparkles className="size-4" />
       )}
-      {pending ? 'Gerando questoes...' : 'Gerar questoes'}
+      {pending ? 'Gerando questões...' : 'Gerar questões'}
     </button>
   )
 }
 
-function subjectTopics(subject: Subject | undefined) {
+function subjectTopics(subject: SimulationSubjectOption | undefined) {
   if (!subject || !Array.isArray(subject.syllabus)) return []
 
   return subject.syllabus
-    .filter((topic): topic is string => typeof topic === 'string')
     .map((topic) => topic.replace(/\s+/g, ' ').trim())
     .filter(
       (topic) =>
@@ -59,20 +66,63 @@ export function SimulationGenerator({
 }: {
   projectId: string
   projectBoard: string | null
-  subjects: Subject[]
+  subjects: SimulationSubjectOption[]
   recentQuestions: RecentQuestion[]
 }) {
   const router = useRouter()
   const supabase = createClient()
   const [state, setState] = useState<SimulationState>({})
   const [pending, setPending] = useState(false)
+  const [subjectQuery, setSubjectQuery] = useState('')
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [topic, setTopic] = useState('')
-  const topics = subjectTopics(subjects.find((subject) => subject.id === subjectId))
+  const selectedSubjectOption = subjects.find((subject) => subject.id === subjectId)
+  const topics = subjectTopics(selectedSubjectOption)
+  const filteredSubjects = subjects.filter((subject) =>
+    subject.name.toLowerCase().includes(subjectQuery.trim().toLowerCase()),
+  )
   const topicListId = `simulation-topics-${subjectId}`
   const boardProfile = getExamBoardProfile(projectBoard)
   const boardPromptContext = getExamBoardPromptContext(projectBoard)
   const expectedJson = getExamBoardJsonExample(projectBoard)
+
+  async function ensurePersistedSubject(
+    subject: SimulationSubjectOption,
+    userId: string,
+  ): Promise<SimulationSubjectOption | null> {
+    if (!subject.isVirtual) return subject
+
+    const syllabus = subject.syllabus.length ? subject.syllabus : [subject.name]
+    const { data, error } = await supabase
+      .from('subjects')
+      .insert({
+        project_id: projectId,
+        user_id: userId,
+        name: subject.name,
+        priority: 3,
+        origin: 'extracted',
+        source_pages: [],
+        confidence: 0.65,
+        topic_count: syllabus.length,
+        mastery: 0,
+        syllabus,
+      })
+      .select('id, name, syllabus')
+      .single()
+
+    if (error || !data) {
+      setState({ error: error?.message ?? 'Falha ao salvar disciplina detectada na matriz.' })
+      return null
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      syllabus: Array.isArray(data.syllabus)
+        ? data.syllabus.filter((item): item is string => typeof item === 'string')
+        : syllabus,
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -106,8 +156,11 @@ export function SimulationGenerator({
         return
       }
 
+      const persistedSubject = await ensurePersistedSubject(selectedSubject, user.id)
+      if (!persistedSubject) return
+
       const repeatedContext = recentQuestions
-        .filter((question) => question.subject_id === selectedSubject.id)
+        .filter((question) => question.subject_id === persistedSubject.id)
         .filter((question) => {
           if (!question.topic) return true
           return question.topic.toLowerCase() === selectedTopic.toLowerCase()
@@ -120,7 +173,7 @@ export function SimulationGenerator({
         role: 'user',
         content: `Gere ${quantity} questoes ineditas de concurso publico brasileiro.
 
-MATERIA: ${selectedSubject.name}
+MATERIA: ${persistedSubject.name}
 TOPICO OBRIGATORIO: ${selectedTopic}
 
 PERFIL DA BANCA:
@@ -176,7 +229,7 @@ JSON esperado: ${expectedJson}`,
       const inserts: Database['public']['Tables']['mock_questions']['Insert'][] =
         validQuestions.map((question) => ({
           project_id: projectId,
-          subject_id: selectedSubject.id,
+          subject_id: persistedSubject.id,
           user_id: user.id,
           statement: question.statement,
           alternatives: question.alternatives,
@@ -213,13 +266,13 @@ JSON esperado: ${expectedJson}`,
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="dashboard-eyebrow">Filtros de geração</p>
+          <p className="dashboard-eyebrow">Banco de questões</p>
           <h3 className="mt-1 font-display text-xl font-extrabold text-white">
-            Questões por tópico
+            Gerar por filtro
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Escolha a disciplina, trave o assunto e gere uma bateria objetiva sem
-            misturar conteúdos do edital.
+            Selecione a disciplina e o assunto do edital antes de gerar a bateria.
+            A IA fica presa nesses filtros para não misturar conteúdo.
           </p>
         </div>
         <span className="dashboard-chip w-fit">
@@ -228,93 +281,121 @@ JSON esperado: ${expectedJson}`,
         </span>
       </div>
 
-      <div className="grid gap-3 rounded-3xl border border-white/10 bg-ink-950/45 p-3 md:grid-cols-2 xl:grid-cols-[1.2fr_.55fr_1.55fr_auto] xl:items-end">
-        <label>
-          <span className="label">Disciplina</span>
-          <select
-            className="field"
-            name="subjectId"
-            value={subjectId}
-            onChange={(event) => {
-              setSubjectId(event.target.value)
-              setTopic('')
-            }}
-            required
-          >
-            {subjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <input type="hidden" name="subjectId" value={subjectId} />
 
-        <label>
-          <span className="label">Quantidade</span>
-          <select className="field" name="quantity" defaultValue="5">
-            <option value="5">5 questões</option>
-            <option value="10">10 questões</option>
-            <option value="20">20 questões</option>
-          </select>
-        </label>
-
-        <label>
-          <span className="label">Assunto obrigatório</span>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
-            <input
-              className="field pl-11"
-              name="topic"
-              value={topic}
-              onChange={(event) => setTopic(event.target.value)}
-              list={topics.length ? topicListId : undefined}
-              minLength={3}
-              placeholder={
-                topics.length
-                  ? 'Selecione ou escreva um topico especifico'
-                  : 'Ex: Direitos fundamentais'
-              }
-              required
-            />
-          </div>
-          {topics.length ? (
-            <datalist id={topicListId}>
-              {topics.map((item) => (
-                <option key={item} value={item} />
+      <div className="rounded-3xl border border-white/10 bg-ink-950/45 p-3">
+        <div className="grid gap-3 lg:grid-cols-[1.05fr_1.35fr_150px] lg:items-start">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="label mb-0">Disciplina</span>
+              <span className="text-[11px] text-slate-600">
+                {subjects.length} disponíveis
+              </span>
+            </div>
+            <div className="relative mb-3">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+              <input
+                className="field h-11 pl-10 text-sm"
+                value={subjectQuery}
+                onChange={(event) => setSubjectQuery(event.target.value)}
+                placeholder="Buscar disciplina"
+              />
+            </div>
+            <div className="grid max-h-60 gap-2 overflow-y-auto pr-1">
+              {filteredSubjects.map((subject) => (
+                <button
+                  key={subject.id}
+                  type="button"
+                  className={`rounded-2xl border px-3 py-2 text-left transition ${
+                    subject.id === subjectId
+                      ? 'border-atlas-400 bg-atlas-400/15 text-white'
+                      : 'border-white/10 bg-white/[0.025] text-slate-400 hover:border-atlas-400/40 hover:text-white'
+                  }`}
+                  onClick={() => {
+                    setSubjectId(subject.id)
+                    setTopic('')
+                  }}
+                >
+                  <span className="block truncate text-sm font-bold">{subject.name}</span>
+                  <span className="mt-1 block text-[11px] text-slate-500">
+                    {subject.isVirtual
+                      ? 'Detectada na matriz da prova'
+                      : `${subject.syllabus.length || 1} tópicos do edital`}
+                  </span>
+                </button>
               ))}
-            </datalist>
-          ) : null}
-        </label>
-
-        <GenerateButton pending={pending} />
-      </div>
-
-      {topics.length ? (
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-              Assuntos do edital
-            </span>
-            <span className="text-[11px] text-slate-600">{topics.length} tópicos</span>
+            </div>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {topics.slice(0, 10).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  topic === item
-                    ? 'border-atlas-400 bg-atlas-400 text-white'
-                    : 'border-white/10 bg-white/[0.03] text-slate-400 hover:border-atlas-400/40 hover:text-white'
-                }`}
-                onClick={() => setTopic(item)}
-              >
-                {item}
-              </button>
-            ))}
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="label mb-0">Assunto obrigatório</span>
+              <span className="text-[11px] text-slate-600">{topics.length} tópicos</span>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+              <input
+                className="field pl-11"
+                name="topic"
+                value={topic}
+                onChange={(event) => setTopic(event.target.value)}
+                list={topics.length ? topicListId : undefined}
+                minLength={3}
+                placeholder={
+                  topics.length
+                    ? 'Busque ou selecione um assunto'
+                    : 'Ex: Direitos fundamentais'
+                }
+                required
+              />
+            </div>
+            {topics.length ? (
+              <datalist id={topicListId}>
+                {topics.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            ) : null}
+            {topics.length ? (
+              <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {topics.slice(0, 18).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold leading-5 transition ${
+                      topic === item
+                        ? 'border-atlas-400 bg-atlas-400 text-white'
+                        : 'border-white/10 bg-white/[0.025] text-slate-400 hover:border-atlas-400/40 hover:text-white'
+                    }`}
+                    onClick={() => setTopic(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            <label>
+              <span className="label">Quantidade</span>
+              <select className="field" name="quantity" defaultValue="5">
+                <option value="5">5 questões</option>
+                <option value="10">10 questões</option>
+                <option value="20">20 questões</option>
+              </select>
+            </label>
+            <div className="mt-3">
+              <GenerateButton pending={pending} />
+            </div>
+            <p className="mt-3 text-[11px] leading-5 text-slate-500">
+              {selectedSubjectOption?.questionCount
+                ? `${selectedSubjectOption.questionCount} questões previstas na prova para esta disciplina.`
+                : 'Use uma quantidade curta para estudar por ciclos.'}
+            </p>
           </div>
         </div>
-      ) : null}
+      </div>
 
       <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-5 text-slate-500">
         {boardProfile

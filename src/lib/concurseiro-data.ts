@@ -281,6 +281,43 @@ function isSelectionPhase(value: string | null | undefined): boolean {
   return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
 }
 
+function sameSubjectName(left: string | null | undefined, right: string | null | undefined): boolean {
+  const normalizedLeft = normalizeForCompare(left ?? '')
+  const normalizedRight = normalizeForCompare(right ?? '')
+  if (!normalizedLeft || !normalizedRight) return false
+
+  return normalizedLeft === normalizedRight ||
+    normalizedLeft.includes(normalizedRight) ||
+    normalizedRight.includes(normalizedLeft)
+}
+
+function findSyllabusForMatrixDiscipline(
+  extraction: EditalExtraction,
+  disciplineName: string,
+): string[] {
+  for (const subject of extraction.subjects) {
+    if (sameSubjectName(subject.role, disciplineName)) {
+      return uniqueStrings(subject.topics)
+    }
+  }
+
+  const parsedTopics = extraction.subjects
+    .flatMap((subject) => subject.topics)
+    .map(subjectNameFromTopic)
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .find((item) => sameSubjectName(item.name, disciplineName))
+
+  if (parsedTopics) {
+    return uniqueStrings(parsedTopics.topics)
+  }
+
+  const relatedTopics = extraction.subjects
+    .flatMap((subject) => subject.topics)
+    .filter((topic) => sameSubjectName(topic, disciplineName))
+
+  return uniqueStrings(relatedTopics)
+}
+
 function buildSubjectDrafts(
   extraction: EditalExtraction,
   focusSubject: string,
@@ -337,6 +374,12 @@ function buildSubjectDrafts(
     if (topics.length > 0) {
       addSubject(focusSubject || extraction.opportunities[0]?.role || 'Conteudo programatico', topics)
     }
+  }
+
+  for (const discipline of extraction.examStructure.disciplines) {
+    if (!discipline.name || isSelectionPhase(discipline.name)) continue
+    const syllabus = findSyllabusForMatrixDiscipline(extraction, discipline.name)
+    addSubject(discipline.name, syllabus.length ? syllabus : [discipline.notes ?? discipline.name])
   }
 
   const explicitSubjects = [...subjectGroups.values()]

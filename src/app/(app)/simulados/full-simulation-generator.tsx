@@ -33,8 +33,6 @@ export function FullSimulationGenerator({
   examStructure: ExamStructure
 }) {
   const [state, action] = useFormState(generateFullSimulationAction, initialState)
-  const previewDisciplines = examStructure.disciplines.slice(0, 5)
-  const remaining = Math.max(0, examStructure.disciplines.length - previewDisciplines.length)
 
   return (
     <section className="dashboard-panel border-atlas-400/20 bg-gradient-to-br from-atlas-400/[0.12] via-ink-900 to-ink-950">
@@ -46,7 +44,7 @@ export function FullSimulationGenerator({
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
             Gere uma bateria proporcional à estrutura do edital, respeitando banca,
-            formato e distribuição por matéria.
+            formato e distribuição por disciplina.
           </p>
         </div>
         <span className="dashboard-chip w-fit">
@@ -84,15 +82,18 @@ export function FullSimulationGenerator({
 
       <div className="mt-5 rounded-2xl border border-white/10 bg-ink-950/45 p-4">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-          Distribuição
+          Matriz da prova
         </p>
-        <div className="space-y-2">
-          {previewDisciplines.map((discipline) => (
+        <p className="mb-3 text-xs leading-5 text-slate-500">
+          Esta lista é a distribuição de questões por disciplina detectada no edital.
+        </p>
+        <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+          {examStructure.disciplines.map((discipline) => (
             <div
               key={discipline.name}
-              className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2 text-sm"
+              className="flex items-start justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2 text-sm"
             >
-              <span className="min-w-0 truncate font-semibold text-slate-200">
+              <span className="min-w-0 font-semibold leading-5 text-slate-200">
                 {discipline.name}
               </span>
               <span className="shrink-0 text-xs font-bold text-atlas-400">
@@ -100,11 +101,6 @@ export function FullSimulationGenerator({
               </span>
             </div>
           ))}
-          {remaining ? (
-            <p className="pt-1 text-xs text-slate-500">
-              + {remaining} matérias na matriz.
-            </p>
-          ) : null}
         </div>
       </div>
 

@@ -19,6 +19,8 @@ const systemPrompt = [
   'Preserve datas no formato original encontrado no texto, preferencialmente dd/mm/aaaa.',
   'No campo subjects, cada item deve representar uma disciplina/materia do conteudo programatico: role = nome da disciplina e topics = lista detalhada dos assuntos que o candidato deve estudar nessa disciplina.',
   'Nao coloque apenas nomes de materias em subjects.topics. Se encontrar "Lingua Portuguesa: interpretacao, ortografia", retorne role "Lingua Portuguesa" e topics ["interpretacao", "ortografia"].',
+  'Nao agrupe disciplinas atomicas em areas amplas quando o edital ou a matriz separar os nomes. Se aparecer Ciencias Humanas contendo Historia, Geografia, Filosofia ou Sociologia, crie subjects separados para cada disciplina quando houver topicos proprios.',
+  'Se examStructure.disciplines listar uma disciplina, essa disciplina tambem deve existir em subjects sempre que houver conteudo programatico relacionado a ela.',
   'Procure anexos e secoes como Conteudo Programatico, Conhecimentos Gerais, Conhecimentos Especificos, Programa de Prova e Objetos de Avaliacao; extraia o maximo de topicos sustentados pelo texto.',
   'subjects deve conter somente conteudo de estudo da prova objetiva/escrita. Nao transforme etapas do concurso em materia.',
   'Nunca inclua como subject: teste de aptidao/capacitacao fisica, TAF, avaliacao psicologica, exame medico, inspecao de saude, investigacao social, prova de titulos, heteroidentificacao, procedimento documental, curso de formacao ou fases semelhantes.',
@@ -121,6 +123,7 @@ function buildUserPrompt(payload: EditalAiPayload): string {
       ? `Fallback heuristico local: ${JSON.stringify(payload.heuristicExtraction)}`
       : 'Fallback heuristico local: null',
     'Regra obrigatoria para conteudo programatico: subjects deve conter disciplinas reais, e cada disciplina precisa carregar seus topicos de estudo. Nao basta listar "Lingua Portuguesa" ou "Matematica"; extraia os assuntos internos de cada uma.',
+    'Regra de granularidade: nao salve apenas areas grandes como "Ciencias Humanas", "Ciencias Naturais" ou "Conhecimentos Gerais" quando o edital trouxer disciplinas internas. Promova as disciplinas internas para subjects proprios.',
     'Regra de exclusao: nao use fases do concurso como materia. TAF/teste fisico/avaliacao psicologica/exame medico/investigacao social/curso de formacao/prova de titulos nao entram em subjects.',
     'Prioridade absoluta: se houver trechos marcados como TRECHO PRIORITARIO DE CONTEUDO PROGRAMATICO, extraia subjects desses trechos e ignore listas de etapas/fases do concurso.',
     'Regra obrigatoria para estrutura da prova: procure nos trechos prioritarios a tabela/quadro que informa quantas questoes existem na prova objetiva/escrita. Preencha examStructure.totalQuestions, durationMinutes, format e disciplines[].questionCount quando sustentado pelo texto.',
