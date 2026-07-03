@@ -3,6 +3,7 @@ type Table<Row, Insert, Update = Partial<Insert>> = { Row: Row; Insert: Insert; 
 
 export type ProjectStatus = 'draft' | 'processing' | 'ready' | 'archived'
 export type ExtractionStatus = 'pending' | 'processing' | 'review' | 'ready' | 'failed'
+export type SourceType = 'pdf-textual' | 'pdf-scan' | 'image' | 'plain-text'
 export type TaskStatus = 'pending' | 'done' | 'skipped' | 'delayed'
 export type TaskType = 'study' | 'revision' | 'questions' | 'mock' | 'material'
 

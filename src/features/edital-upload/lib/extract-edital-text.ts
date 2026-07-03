@@ -1,9 +1,9 @@
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
 
 import type { EditalFileClassification } from '../../../lib/ai/edital-schema'
 
-GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+GlobalWorkerOptions.workerSrc =
+  'https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs'
 
 export interface ExtractEditalTextResult {
   textContent: string
