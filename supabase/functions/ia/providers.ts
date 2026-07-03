@@ -47,6 +47,9 @@ const contentProgramKeywords = [
   'objetos de avaliacao',
   'disciplinas cobradas',
   'materias cobradas',
+]
+
+const examStructureKeywords = [
   'quadro de provas',
   'tabela de provas',
   'prova objetiva',
@@ -67,6 +70,38 @@ const contentProgramKeywords = [
   'caráter eliminatório',
 ]
 
+function compactLines(textContent: string): string[] {
+  return textContent
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+function findKeywordIndexes(lines: string[], keywords: string[]): number[] {
+  return lines
+    .map((line, index) => ({ line: normalizeForCompare(line), index }))
+    .filter(({ line }) => keywords.some((keyword) => line.includes(normalizeForCompare(keyword))))
+    .map(({ index }) => index)
+}
+
+function collectWindows(lines: string[], indexes: number[], before: number, after: number): string {
+  const selected = new Map<number, string>()
+
+  for (const index of indexes) {
+    const start = Math.max(0, index - before)
+    const end = Math.min(lines.length, index + after)
+
+    for (let cursor = start; cursor < end; cursor += 1) {
+      selected.set(cursor, lines[cursor])
+    }
+  }
+
+  return [...selected.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([index, line]) => `${index + 1}: ${line}`)
+    .join('\n')
+}
+
 function buildRelevantTextBlock(textContent: string): string {
   const trimmed = textContent.trim()
   if (!trimmed) {
@@ -74,26 +109,20 @@ function buildRelevantTextBlock(textContent: string): string {
   }
 
   const maxChars = 180_000
-  if (trimmed.length <= maxChars) {
-    return trimmed
-  }
-
-  const lines = textContent.split(/\r?\n/)
-  const headingIndexes = lines
-    .map((line, index) => ({ line: normalizeForCompare(line), index }))
-    .filter(({ line }) => contentProgramKeywords.some((keyword) => line.includes(keyword)))
-    .map(({ index }) => index)
+  const lines = compactLines(textContent)
+  const contentIndexes = findKeywordIndexes(lines, contentProgramKeywords)
+  const structureIndexes = findKeywordIndexes(lines, examStructureKeywords)
+  const contentBlock = contentIndexes.length
+    ? collectWindows(lines, contentIndexes.slice(0, 12), 10, 420)
+    : lines.slice(-900).map((line, index) => `${Math.max(1, lines.length - 900) + index}: ${line}`).join('\n')
+  const structureBlock = structureIndexes.length
+    ? collectWindows(lines, structureIndexes.slice(0, 12), 10, 160)
+    : lines.slice(0, 260).map((line, index) => `${index + 1}: ${line}`).join('\n')
 
   const sections: string[] = []
-  sections.push(`=== INICIO DO EDITAL ===\n${lines.slice(0, 140).join('\n')}`)
-
-  for (const index of headingIndexes.slice(0, 10)) {
-    const start = Math.max(0, index - 12)
-    const end = Math.min(lines.length, index + 260)
-    sections.push(`=== TRECHO PRIORITARIO DE CONTEUDO PROGRAMATICO - LINHA ${index + 1} ===\n${lines.slice(start, end).join('\n')}`)
-  }
-
-  sections.push(`=== FINAL/ANEXOS DO EDITAL ===\n${lines.slice(-520).join('\n')}`)
+  sections.push(`=== BLOCO 1: INICIO/METADADOS DO EDITAL ===\n${lines.slice(0, 160).map((line, index) => `${index + 1}: ${line}`).join('\n')}`)
+  sections.push(`=== BLOCO 2: CONTEUDO PROGRAMATICO ISOLADO - USE PARA subjects ===\n${contentBlock}`)
+  sections.push(`=== BLOCO 3: MATRIZ/ESTRUTURA DA PROVA - USE APENAS PARA examStructure ===\n${structureBlock}`)
 
   const relevant = sections.join('\n\n')
   if (relevant.length <= maxChars) {
@@ -101,13 +130,13 @@ function buildRelevantTextBlock(textContent: string): string {
   }
 
   const priority = sections
-    .filter((section) => section.includes('TRECHO PRIORITARIO'))
+    .filter((section) => section.includes('BLOCO 2'))
     .join('\n\n')
     .slice(0, 145_000)
   const intro = sections[0].slice(0, 18_000)
-  const tail = sections.at(-1)?.slice(0, 17_000) ?? ''
+  const matrix = sections.at(-1)?.slice(0, 17_000) ?? ''
 
-  return [intro, priority, tail].filter(Boolean).join('\n\n')
+  return [intro, priority, matrix].filter(Boolean).join('\n\n')
 }
 
 function buildUserPrompt(payload: EditalAiPayload): string {
@@ -127,8 +156,9 @@ function buildUserPrompt(payload: EditalAiPayload): string {
     'Regra anti-lixo: subjects.topics nunca pode conter pontuacao, peso ou quantidade de questoes. Se o trecho for "20,0 pontos", use isso apenas em examStructure.notes/weight e continue procurando o conteudo programatico real.',
     'Regra de granularidade: nao salve apenas areas grandes como "Ciencias Humanas", "Ciencias Naturais" ou "Conhecimentos Gerais" quando o edital trouxer disciplinas internas. Promova as disciplinas internas para subjects proprios.',
     'Regra de exclusao: nao use fases do concurso como materia. TAF/teste fisico/avaliacao psicologica/exame medico/investigacao social/curso de formacao/prova de titulos nao entram em subjects.',
-    'Prioridade absoluta: se houver trechos marcados como TRECHO PRIORITARIO DE CONTEUDO PROGRAMATICO, extraia subjects desses trechos e ignore listas de etapas/fases do concurso.',
-    'Regra obrigatoria para estrutura da prova: procure nos trechos prioritarios a tabela/quadro que informa quantas questoes existem na prova objetiva/escrita. Preencha examStructure.totalQuestions, durationMinutes, format e disciplines[].questionCount quando sustentado pelo texto.',
+    'Separacao obrigatoria: extraia subjects somente do BLOCO 2. Use o BLOCO 3 apenas para examStructure. Nunca copie peso, pontos, nota ou quantidade de questoes do BLOCO 3 para subjects.topics.',
+    'Prioridade absoluta: se o BLOCO 2 contiver conteudo programatico, ignore listas de etapas/fases do concurso.',
+    'Regra obrigatoria para estrutura da prova: procure no BLOCO 3 a tabela/quadro que informa quantas questoes existem na prova objetiva/escrita. Preencha examStructure.totalQuestions, durationMinutes, format e disciplines[].questionCount quando sustentado pelo texto.',
     'Texto do edital abaixo:',
     textBlock,
   ].join('\n\n')
@@ -150,9 +180,82 @@ function isSelectionPhase(value: string | null | undefined): boolean {
   return /\b(taf|teste de aptidao fisica|teste de capacitacao fisica|teste fisico|avaliacao fisica|exame medico|inspecao de saude|avaliacao psicologica|exame psicologico|investigacao social|sindicancia|heteroidentificacao|prova de titulos|curso de formacao|procedimento documental|entrega de documentos)\b/.test(normalized)
 }
 
+function isStudyTopic(value: string | null | undefined): value is string {
+  const topic = value?.replace(/\s+/g, ' ').trim() ?? ''
+  if (topic.length < 4) return false
+
+  return !/^\d+(?:[,.]\d+)?\s*(?:pontos?|quest(?:ao|oes|ões))$/i.test(topic) &&
+    !/^(?:pontos?|pontuacao|pontuação|valor|nota|peso)\b/i.test(topic)
+}
+
+function isBroadSubjectName(value: string | null | undefined): boolean {
+  const normalized = normalizeForCompare(value ?? '')
+
+  return /\b(conhecimentos gerais|conhecimentos especificos|conhecimentos basicos|ciencias humanas|ciencias naturais|atualidades)\b/.test(normalized)
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.replace(/\s+/g, ' ').trim()).filter(Boolean))]
+}
+
+function subjectNameFromTopic(topic: string): { name: string; topics: string[] } | null {
+  const match = topic.match(/^(.{3,120}?)\s*:\s*(.+)$/)
+  if (!match) return null
+
+  const name = match[1]
+    .replace(/^\s*\d+(?:\.\d+)*[.)-]?\s*/, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[:.;,-]+$/, '')
+    .trim()
+  const topics = uniqueStrings(
+    match[2]
+      .split(/\r?\n|[;]/)
+      .map((item) =>
+        item
+          .replace(/^\s*\d+(?:\.\d+)*[.)-]?\s*/, '')
+          .replace(/\s+/g, ' ')
+          .replace(/[:.;,-]+$/, '')
+          .trim(),
+      ),
+  ).filter(isStudyTopic)
+
+  return name.length >= 3 && topics.length ? { name, topics } : null
+}
+
+function subjectNameFromKeywordTopic(topic: string): string | null {
+  const normalized = normalizeForCompare(topic)
+
+  if (/\b(historia|historico|brasil colonia|brasil imperio|republica|idade media|idade moderna)\b/.test(normalized)) return 'História'
+  if (/\b(geografia|cartografia|clima|relevo|hidrografia|urbanizacao|globalizacao|populacao|territorio)\b/.test(normalized)) return 'Geografia'
+  if (/\b(filosofia|etica|moral|socrates|platao|aristoteles|kant|contratualismo)\b/.test(normalized)) return 'Filosofia'
+  if (/\b(sociologia|sociedade|cultura|cidadania|movimentos sociais|desigualdade social|trabalho e sociedade)\b/.test(normalized)) return 'Sociologia'
+  if (/\b(biologia|ecologia|genetica|celula|fisiologia|evolucao|botanica|zoologia)\b/.test(normalized)) return 'Biologia'
+  if (/\b(quimica|atomo|molecula|substancia|mistura|reacao|estequiometria|tabela periodica)\b/.test(normalized)) return 'Química'
+  if (/\b(fisica|mecanica|cinematica|dinamica|optica|eletricidade|termodinamica|ondulatoria)\b/.test(normalized)) return 'Física'
+
+  return null
+}
+
+function splitBroadSubject(subject: EditalExtraction['subjects'][number]) {
+  if (!isBroadSubjectName(subject.role)) return []
+
+  const grouped = new Map<string, string[]>()
+
+  for (const topic of subject.topics.filter(isStudyTopic)) {
+    const parsed = subjectNameFromTopic(topic)
+    const name = parsed?.name ?? subjectNameFromKeywordTopic(topic)
+    const topics = parsed?.topics ?? [topic]
+    if (!name) continue
+
+    grouped.set(name, uniqueStrings([...(grouped.get(name) ?? []), ...topics]))
+  }
+
+  return [...grouped.entries()].map(([role, topics]) => ({ role, topics }))
+}
+
 function isUsefulSubject(subject: EditalExtraction['subjects'][number]): boolean {
   if (isSelectionPhase(subject.role)) return false
-  const topics = subject.topics.filter((topic) => !isSelectionPhase(topic))
+  const topics = subject.topics.filter((topic) => !isSelectionPhase(topic) && isStudyTopic(topic))
   return Boolean(subject.role || topics.length) && topics.length > 0
 }
 
@@ -160,11 +263,27 @@ function sanitizeExtractionSubjects(
   extraction: EditalExtraction,
   fallback: EditalExtraction | null | undefined,
 ): EditalExtraction {
-  const cleanedSubjects = extraction.subjects
-    .map((subject) => ({
-      ...subject,
-      topics: subject.topics.filter((topic) => !isSelectionPhase(topic)),
-    }))
+  const expandedSubjects = extraction.subjects.flatMap((subject) => {
+    const split = splitBroadSubject(subject)
+    return split.length ? split : [subject]
+  })
+  const cleanedSubjects = expandedSubjects
+    .flatMap((subject) => {
+      const parsedTopics = subject.topics
+        .map(subjectNameFromTopic)
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      if ((!subject.role || isBroadSubjectName(subject.role)) && parsedTopics.length) {
+        return parsedTopics.map((item) => ({
+          role: item.name,
+          topics: item.topics,
+        }))
+      }
+
+      return [{
+        ...subject,
+        topics: uniqueStrings(subject.topics).filter((topic) => !isSelectionPhase(topic) && isStudyTopic(topic)),
+      }]
+    })
     .filter(isUsefulSubject)
 
   if (cleanedSubjects.length > 0) {
@@ -174,7 +293,7 @@ function sanitizeExtractionSubjects(
   const fallbackSubjects = fallback?.subjects
     .map((subject) => ({
       ...subject,
-      topics: subject.topics.filter((topic) => !isSelectionPhase(topic)),
+      topics: subject.topics.filter((topic) => !isSelectionPhase(topic) && isStudyTopic(topic)),
     }))
     .filter(isUsefulSubject)
 
