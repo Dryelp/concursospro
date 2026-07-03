@@ -145,6 +145,7 @@ JSON esperado: ${expectedJson}`,
         schema: questionsSchema,
         retries: 0,
         accessToken: session.access_token,
+        timeoutMs: 60_000,
       })
 
       const normalizedPrevious = new Set(

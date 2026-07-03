@@ -7,4 +7,11 @@ export const questionSchema = z.object({
   explanation: z.string().min(3),
 })
 export const questionsSchema = z.object({ questions: z.array(questionSchema).min(1).max(20) })
+export const fullSimulationQuestionSchema = questionSchema.extend({
+  subjectName: z.string().min(2),
+  topic: z.string().min(3).optional(),
+})
+export const fullSimulationQuestionsSchema = z.object({
+  questions: z.array(fullSimulationQuestionSchema).min(1).max(60),
+})
 export const flashcardsSchema = z.object({ cards: z.array(z.object({ front: z.string().min(3), back: z.string().min(3) })).min(1).max(30) })

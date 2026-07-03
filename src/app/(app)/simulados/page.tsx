@@ -8,9 +8,11 @@ import {
 } from 'lucide-react'
 
 import { SectionEmpty } from '@/components/section-empty'
+import { FullSimulationGenerator } from '@/app/(app)/simulados/full-simulation-generator'
 import { SimulationGenerator } from '@/app/(app)/simulados/generator'
 import { QuestionList } from '@/app/(app)/simulados/question-list'
 import type { MockQuestion, Subject } from '@/lib/database.types'
+import { resolveExamStructure } from '@/lib/exam-structure'
 import { subjectColor } from '@/lib/format'
 import { requireWorkspace } from '@/lib/workspace'
 
@@ -101,6 +103,7 @@ export default async function SimuladosPage({
     { count: correctCount },
     { count: pendingCount },
     { data: answeredStatsRows },
+    { data: extractionRows },
   ] = await Promise.all([
     supabase
       .from('mock_questions')
@@ -143,6 +146,13 @@ export default async function SimuladosPage({
       .eq('user_id', user.id)
       .not('answered_at', 'is', null)
       .limit(5000),
+    supabase
+      .from('edital_extraction_runs')
+      .select('structured_data')
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1),
   ])
 
   const pending = (pendingRows ?? []) as MockQuestion[]
@@ -153,6 +163,8 @@ export default async function SimuladosPage({
   const accuracy = percent(correct, answeredTotal)
   const pendingTotal = pendingCount ?? pending.length
   const performance = buildPerformance(subjects, (answeredStatsRows ?? []) as SubjectStatsRow[])
+  const structuredData = Array.isArray(extractionRows) ? extractionRows[0]?.structured_data : null
+  const examStructure = resolveExamStructure(structuredData, subjects, project.board)
 
   return (
     <div className="dashboard-reveal space-y-5">
@@ -211,16 +223,22 @@ export default async function SimuladosPage({
       <section className="grid gap-5 xl:grid-cols-[1fr_.85fr]">
         <div>
           {subjects.length ? (
-            <SimulationGenerator
-              projectId={project.id}
-              projectBoard={project.board}
-              subjects={subjects}
-              recentQuestions={[...pending, ...answered].map((question) => ({
-                subject_id: question.subject_id,
-                topic: question.topic,
-                statement: question.statement,
-              }))}
-            />
+            <div className="space-y-5">
+              <SimulationGenerator
+                projectId={project.id}
+                projectBoard={project.board}
+                subjects={subjects}
+                recentQuestions={[...pending, ...answered].map((question) => ({
+                  subject_id: question.subject_id,
+                  topic: question.topic,
+                  statement: question.statement,
+                }))}
+              />
+              <FullSimulationGenerator
+                projectId={project.id}
+                examStructure={examStructure}
+              />
+            </div>
           ) : (
             <SectionEmpty
               title="Nenhuma matéria encontrada"

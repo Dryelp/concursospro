@@ -127,6 +127,40 @@ const examSchema = z
     locations: [],
   })
 
+const examStructureDisciplineSchema = z.object({
+  name: z.string().trim().min(1),
+  questionCount: nullableIntegerSchema,
+  weight: nullableNumberSchema,
+  notes: nullableStringSchema,
+  confidence: confidenceSchema,
+})
+
+const examStructureSchema = z
+  .object({
+    totalQuestions: nullableIntegerSchema,
+    durationMinutes: nullableIntegerSchema,
+    format: z.enum([
+      'multiple_choice_a_e',
+      'multiple_choice_a_d',
+      'true_false',
+      'mixed',
+      'unknown',
+    ]).default('unknown'),
+    source: z.enum(['edital', 'manual', 'inferred']).default('edital'),
+    confidence: confidenceSchema,
+    disciplines: z.array(examStructureDisciplineSchema).default([]),
+    warnings: z.array(z.string().trim().min(1)).default([]),
+  })
+  .default({
+    totalQuestions: null,
+    durationMinutes: null,
+    format: 'unknown',
+    source: 'edital',
+    confidence: 0.1,
+    disciplines: [],
+    warnings: [],
+  })
+
 const opportunitySchema = z.object({
   role: z.string().trim().min(1),
   specialty: nullableStringSchema,
@@ -187,6 +221,7 @@ export const editalExtractionSchema = z.object({
   organizer: organizerSchema,
   registration: registrationSchema,
   exam: examSchema,
+  examStructure: examStructureSchema,
   opportunities: z.array(opportunitySchema).default([]),
   quotaNotes: z.array(z.string().trim().min(1)).default([]),
   subjects: z.array(subjectSchema).default([]),
@@ -312,6 +347,48 @@ export const editalExtractionJsonSchema = {
         'locations',
       ],
     },
+    examStructure: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        totalQuestions: { type: ['integer', 'null'] },
+        durationMinutes: { type: ['integer', 'null'] },
+        format: {
+          type: 'string',
+          enum: ['multiple_choice_a_e', 'multiple_choice_a_d', 'true_false', 'mixed', 'unknown'],
+        },
+        source: { type: 'string', enum: ['edital', 'manual', 'inferred'] },
+        confidence: { type: 'number', minimum: 0, maximum: 1 },
+        disciplines: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              name: { type: 'string' },
+              questionCount: { type: ['integer', 'null'] },
+              weight: { type: ['number', 'null'] },
+              notes: { type: ['string', 'null'] },
+              confidence: { type: 'number', minimum: 0, maximum: 1 },
+            },
+            required: ['name', 'questionCount', 'weight', 'notes', 'confidence'],
+          },
+        },
+        warnings: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+      required: [
+        'totalQuestions',
+        'durationMinutes',
+        'format',
+        'source',
+        'confidence',
+        'disciplines',
+        'warnings',
+      ],
+    },
     opportunities: {
       type: 'array',
       items: {
@@ -419,6 +496,7 @@ export const editalExtractionJsonSchema = {
     'organizer',
     'registration',
     'exam',
+    'examStructure',
     'opportunities',
     'quotaNotes',
     'subjects',

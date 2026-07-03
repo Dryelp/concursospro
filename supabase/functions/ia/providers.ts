@@ -17,6 +17,8 @@ const systemPrompt = [
   'Responda somente com JSON valido no schema fornecido.',
   'Nao invente campos ausentes; use null, arrays vazios e confidence menor quando faltar evidencia.',
   'Preserve datas no formato original encontrado no texto, preferencialmente dd/mm/aaaa.',
+  'Extraia tambem examStructure quando houver matriz da prova: total de questoes, tempo, formato e quantidade/peso por disciplina.',
+  'Se a matriz da prova estiver incompleta, preencha apenas o que estiver sustentado pelo edital e registre warnings.',
   'Use warnings para ambiguidade relevante e evidence para trechos curtos que sustentem os principais campos.',
 ].join(' ')
 
@@ -67,7 +69,7 @@ async function callGemini(payload: EditalAiPayload): Promise<ProviderExtractionR
     throw new Error('GEMINI_API_KEY ausente.')
   }
 
-  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-flash'
+  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-pro'
   const userParts: Array<
     | { text: string }
     | { inlineData: { mimeType: string; data: string } }

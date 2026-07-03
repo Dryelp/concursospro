@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { Brain, CheckCircle2, CircleHelp, Lightbulb, XCircle } from 'lucide-react'
 
 import { answerQuestionAction } from '@/app/(app)/simulados/actions'
@@ -254,6 +254,9 @@ function AtlasQuestionHelp({
   examBoard: string | null
 }) {
   const [open, setOpen] = useState(false)
+  const isCorrect = selectedAnswer === question.correct_answer
+  const selectedText = alternativeText(alternatives, selectedAnswer)
+  const correctText = alternativeText(alternatives, question.correct_answer)
 
   return (
     <div className="mt-4">
@@ -270,13 +273,38 @@ function AtlasQuestionHelp({
         <div className="mt-3 rounded-2xl border border-atlas-400/15 bg-atlas-400/[0.055] p-4 text-sm leading-6 text-slate-300">
           <div className="mb-2 flex items-center gap-2 font-bold text-white">
             <Lightbulb className="size-4 text-atlas-yellow" />
-            Prof. Atlas
+            {answered ? 'Correção do Prof. Atlas' : 'Dica do Prof. Atlas'}
           </div>
-          <p>{atlasSmartHint(question, alternatives, answered, selectedAnswer, examBoard)}</p>
+          <p className="break-words">{atlasSmartHint(question, alternatives, answered, selectedAnswer, examBoard)}</p>
+          {answered ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className={`rounded-2xl border px-4 py-3 ${isCorrect ? 'border-atlas-green/20 bg-atlas-green/10' : 'border-atlas-red/20 bg-atlas-red/10'}`}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Sua resposta
+                </p>
+                <p className="mt-1 font-bold text-white">
+                  {selectedAnswer ?? '-'} {selectedText ? `· ${selectedText.replace(/\*\*/g, '')}` : ''}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-atlas-green/20 bg-atlas-green/10 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Gabarito
+                </p>
+                <p className="mt-1 font-bold text-white">
+                  {question.correct_answer} {correctText ? `· ${correctText.replace(/\*\*/g, '')}` : ''}
+                </p>
+              </div>
+            </div>
+          ) : null}
           {answered && question.explanation ? (
-            <p className="mt-3 border-t border-white/10 pt-3 text-slate-400">
-              <MarkedText value={question.explanation} />
-            </p>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-ink-950/50 p-4">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-atlas-400">
+                Por que isso importa
+              </p>
+              <p className="break-words text-slate-300">
+                <MarkedText value={question.explanation} />
+              </p>
+            </div>
           ) : null}
           {answered ? (
             <p className="mt-3 text-xs font-semibold text-slate-500">
@@ -299,7 +327,22 @@ export function QuestionList({
 }: QuestionListProps) {
   const [localAnswers, setLocalAnswers] = useState<Record<string, LocalAnswer>>({})
   const [pendingAnswers, setPendingAnswers] = useState<Record<string, boolean>>({})
+  const [visibleQuestions, setVisibleQuestions] = useState(questions)
   const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setVisibleQuestions((current) => {
+      const answeredNow = new Set(Object.keys(localAnswers))
+      const incoming = new Map(questions.map((question) => [question.id, question]))
+      const merged = new Map(current.map((question) => [question.id, question]))
+
+      questions.forEach((question) => merged.set(question.id, question))
+
+      return [...merged.values()].filter((question) =>
+        incoming.has(question.id) || answeredNow.has(question.id) || Boolean(question.answered_at),
+      )
+    })
+  }, [localAnswers, questions])
 
   function answer(question: MockQuestion, selectedAnswer: string) {
     const now = new Date().toISOString()
@@ -332,13 +375,13 @@ export function QuestionList({
         </div>
         <span className="dashboard-chip">
           <CircleHelp className="size-3.5" />
-          {questions.length} {questions.length === 1 ? 'questão' : 'questões'}
+          {visibleQuestions.length} {visibleQuestions.length === 1 ? 'questão' : 'questões'}
         </span>
       </div>
 
-      {questions.length ? (
+      {visibleQuestions.length ? (
         <div className="space-y-4">
-          {questions.map((question, index) => {
+          {visibleQuestions.map((question, index) => {
             const alternatives = Array.isArray(question.alternatives)
               ? question.alternatives as Alternative[]
               : []

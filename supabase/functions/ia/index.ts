@@ -1,5 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4'
 
+import { editalAiRequestSchema } from './schema.ts'
+import { buildHeuristicExtraction } from './heuristics.ts'
+import { extractWithProviders } from './providers.ts'
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -53,6 +57,13 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+function timeoutForTask(task: string) {
+  if (task === 'questao') return 60_000
+  if (task === 'crono' || task === 'flashcard' || task === 'apostila') return 45_000
+  if (task === 'tutor') return 25_000
+  return 30_000
+}
+
 function systemFor(task: string) {
   const base = 'Você é o Professor Atlas, especialista em concursos públicos brasileiros. Seja preciso, didático e não invente fatos.'
   const tasks: Record<string, string> = {
@@ -67,12 +78,14 @@ function systemFor(task: string) {
   return base + (tasks[task] ?? '')
 }
 
-function geminiModels() {
+function geminiModels(task: string) {
+  const taskModel = Deno.env.get(`GEMINI_${task.toUpperCase()}_MODEL`)?.trim()
   const configured = Deno.env.get('GEMINI_MODEL')?.trim()
   return [
+    taskModel,
     configured,
-    'gemini-3.5-flash',
-    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
   ].filter((model, index, models): model is string =>
     Boolean(model) && models.indexOf(model) === index
   )
@@ -83,7 +96,7 @@ async function gemini(messages: Message[], task: string, maxTokens: number) {
   if (!key) return null
   const failures: string[] = []
 
-  for (const model of geminiModels()) {
+  for (const model of geminiModels(task)) {
     let response: Response
     try {
       response = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
@@ -101,7 +114,7 @@ async function gemini(messages: Message[], task: string, maxTokens: number) {
           ...(JSON_TASKS.has(task) ? { responseMimeType: 'application/json' } : {}),
         },
       }),
-      }, 9_000)
+      }, timeoutForTask(task))
     } catch {
       failures.push(`${model}:timeout`)
       continue
@@ -153,7 +166,7 @@ async function openRouter(messages: Message[], task: string, maxTokens: number) 
         ...(JSON_TASKS.has(task) ? { response_format: { type: 'json_object' } } : {}),
         messages: [{ role: 'system', content: systemFor(task) }, ...messages],
       }),
-      }, 12_000)
+      }, timeoutForTask(task))
     } catch {
       failures.push(`${model}:timeout`)
       continue
@@ -179,6 +192,32 @@ Deno.serve(async (request) => {
   try {
     await requireUser(request)
     const body = await request.json()
+
+    if (body?.action === 'extract_edital') {
+      const parsed = editalAiRequestSchema.safeParse(body)
+      if (!parsed.success) {
+        return json({ error: parsed.error.issues[0]?.message ?? 'Payload de edital invalido.' }, 400)
+      }
+
+      const heuristic = buildHeuristicExtraction(parsed.data.payload)
+      const providerResult = await extractWithProviders({
+        ...parsed.data.payload,
+        heuristicExtraction: parsed.data.payload.heuristicExtraction ?? heuristic,
+      })
+      const extraction = providerResult?.extraction ?? heuristic
+
+      return json({
+        provider: providerResult?.provider ?? 'heuristic',
+        model: providerResult?.model ?? null,
+        usedFallback: !providerResult,
+        warnings: [
+          ...heuristic.warnings,
+          ...(providerResult?.warnings ?? []),
+        ],
+        extraction,
+      })
+    }
+
     const messages: Message[] = Array.isArray(body.messages) ? body.messages : []
     const task = typeof body.task === 'string' ? body.task : 'general'
     const maxTokens = Math.min(8000, Math.max(32, Number(body.max_tokens) || 2000))
