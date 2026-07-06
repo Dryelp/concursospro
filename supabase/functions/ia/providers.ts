@@ -34,6 +34,25 @@ const systemPrompt = [
   'Use warnings para ambiguidade relevante e evidence para trechos curtos que sustentem os principais campos.',
 ].join(' ')
 
+async function readErrorBody(response: Response) {
+  return (await response.text().catch(() => '')).slice(0, 500)
+}
+
+function shortFailure(model: string, status: number, body: string) {
+  const message = body
+    .replace(/\s+/g, ' ')
+    .match(/"message"\s*:\s*"([^"]+)"/)?.[1]
+
+  return `${model}:${status}${message ? `:${message.slice(0, 120)}` : ''}`
+}
+
+function isAccountOrLimitFailure(status: number, body: string) {
+  if ([401, 402, 403, 429].includes(status)) return true
+  if (status !== 400) return false
+
+  return /billing|payment|quota|credit|permission|api key|apikey|disabled|exceeded|rate limit/i.test(body)
+}
+
 const contentProgramKeywords = [
   'conteudo programatico',
   'conteudos programaticos',
@@ -400,7 +419,9 @@ async function callGemini(payload: EditalAiPayload): Promise<ProviderExtractionR
     )
 
     if (!response.ok) {
-      failures.push(`${model}:${response.status}`)
+      const body = await readErrorBody(response)
+      failures.push(shortFailure(model, response.status, body))
+      if (isAccountOrLimitFailure(response.status, body)) break
       continue
     }
 
@@ -438,64 +459,99 @@ async function callOpenRouter(payload: EditalAiPayload): Promise<ProviderExtract
     throw new Error('OPENROUTER_API_KEY ausente.')
   }
 
-  const model = Deno.env.get('OPENROUTER_MODEL') ?? 'google/gemini-2.5-flash-lite'
   if (payload.fileData && !payload.textContent.trim()) {
     throw new Error('OpenRouter sem texto local foi ignorado; configure Gemini para leitura visual/OCR.')
   }
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': Deno.env.get('OPENROUTER_REFERER') ?? 'https://concurseiro.pro',
-      'X-Title': Deno.env.get('OPENROUTER_TITLE') ?? 'Concurseiro Pro',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      max_tokens: 12000,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'edital_extraction',
-          strict: true,
-          schema: editalExtractionJsonSchema,
-        },
-      },
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: buildUserPrompt(payload),
-        },
-      ],
-    }),
-  })
+  const models = [
+    Deno.env.get('OPENROUTER_EDITAL_MODEL')?.trim(),
+    Deno.env.get('OPENROUTER_EXTRACT_MODEL')?.trim(),
+    Deno.env.get('OPENROUTER_MODEL')?.trim(),
+    'google/gemini-2.5-flash-lite',
+    'deepseek/deepseek-chat-v3-0324',
+    'deepseek/deepseek-chat-v3-0324:free',
+    'deepseek/deepseek-chat',
+  ].filter((model, index, list): model is string =>
+    Boolean(model) && list.indexOf(model) === index
+  )
+  const failures: string[] = []
 
-  if (!response.ok) {
-    throw new Error(`OpenRouter retornou ${response.status}.`)
+  for (const model of models) {
+    const modes = ['json_schema', 'json_object', 'prompt']
+
+    for (const mode of modes) {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': Deno.env.get('OPENROUTER_REFERER') ?? 'https://concurseiro.pro',
+          'X-Title': Deno.env.get('OPENROUTER_TITLE') ?? 'Concurseiro Pro',
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.1,
+          max_tokens: 12000,
+          ...(mode === 'json_schema' ? {
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: 'edital_extraction',
+                strict: true,
+                schema: editalExtractionJsonSchema,
+              },
+            },
+          } : {}),
+          ...(mode === 'json_object' ? { response_format: { type: 'json_object' } } : {}),
+          messages: [
+            {
+              role: 'system',
+              content: mode === 'prompt'
+                ? `${systemPrompt} Responda exclusivamente com JSON valido, sem markdown e sem texto fora do JSON.`
+                : systemPrompt,
+            },
+            {
+              role: 'user',
+              content: buildUserPrompt(payload),
+            },
+          ],
+        }),
+      })
+
+      if (!response.ok) {
+        const body = await readErrorBody(response)
+        failures.push(shortFailure(`${model}:${mode}`, response.status, body))
+        if (isAccountOrLimitFailure(response.status, body)) {
+          throw new Error(`OpenRouter retornou erro de conta/limite (${failures.join(', ')}).`)
+        }
+        continue
+      }
+
+      const data = await response.json()
+      const rawContent = data?.choices?.[0]?.message?.content
+
+      if (!rawContent) {
+        failures.push(`${model}:${mode}:empty`)
+        continue
+      }
+
+      try {
+        return {
+          provider: 'openrouter',
+          model,
+          extraction: sanitizeExtractionSubjects(
+            normalizeEditalExtraction(typeof rawContent === 'string' ? tryParseJson(rawContent) : rawContent),
+            payload.heuristicExtraction,
+          ),
+          warnings: [],
+        }
+      } catch (error) {
+        failures.push(`${model}:${mode}:${error instanceof Error ? error.message : 'invalid-json'}`)
+      }
+    }
   }
 
-  const data = await response.json()
-  const rawContent = data?.choices?.[0]?.message?.content
-
-  if (!rawContent) {
-    throw new Error('OpenRouter nao retornou conteudo estruturado.')
-  }
-
-  return {
-    provider: 'openrouter',
-    model,
-    extraction: sanitizeExtractionSubjects(
-      normalizeEditalExtraction(typeof rawContent === 'string' ? tryParseJson(rawContent) : rawContent),
-      payload.heuristicExtraction,
-    ),
-    warnings: [],
-  }
+  throw new Error(`OpenRouter nao conseguiu extrair edital (${failures.join(', ')}).`)
 }
 
 export async function extractWithProviders(

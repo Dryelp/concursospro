@@ -34,6 +34,25 @@ function cleanResponse(text: string) {
   return text.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
 }
 
+async function readErrorBody(response: Response) {
+  return (await response.text().catch(() => '')).slice(0, 500)
+}
+
+function shortFailure(model: string, status: number, body: string) {
+  const message = body
+    .replace(/\s+/g, ' ')
+    .match(/"message"\s*:\s*"([^"]+)"/)?.[1]
+
+  return `${model}:${status}${message ? `:${message.slice(0, 120)}` : ''}`
+}
+
+function isAccountOrLimitFailure(status: number, body: string) {
+  if ([401, 402, 403, 429].includes(status)) return true
+  if (status !== 400) return false
+
+  return /billing|payment|quota|credit|permission|api key|apikey|disabled|exceeded|rate limit/i.test(body)
+}
+
 function isValidForTask(text: string | undefined, task: string) {
   if (!text) return false
   if (!JSON_TASKS.has(task)) return true
@@ -121,7 +140,9 @@ async function gemini(messages: Message[], task: string, maxTokens: number) {
     }
 
     if (!response.ok) {
-      failures.push(`${model}:${response.status}`)
+      const body = await readErrorBody(response)
+      failures.push(shortFailure(model, response.status, body))
+      if (isAccountOrLimitFailure(response.status, body)) break
       continue
     }
 
@@ -145,42 +166,54 @@ async function openRouter(messages: Message[], task: string, maxTokens: number) 
   const models = [
     taskModel,
     configured,
-    'deepseek/deepseek-v4-flash',
-    'deepseek/deepseek-chat-v3.1:free',
+    'google/gemini-2.5-flash-lite',
+    'deepseek/deepseek-chat-v3-0324:free',
+    'deepseek/deepseek-chat-v3-0324',
+    'deepseek/deepseek-chat',
   ].filter((model, index, list): model is string =>
     Boolean(model) && list.indexOf(model) === index
   )
 
   for (const model of models) {
-    let response: Response
-    try {
-      response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`, 'Content-Type': 'application/json',
-        'HTTP-Referer': Deno.env.get('OPENROUTER_REFERER') ?? 'https://concurseiro-pro.netlify.app',
-        'X-Title': 'ConcurseiroPro',
-      },
-      body: JSON.stringify({
-        model, temperature: task === 'tutor' ? 0.35 : 0.15, max_tokens: maxTokens,
-        ...(JSON_TASKS.has(task) ? { response_format: { type: 'json_object' } } : {}),
-        messages: [{ role: 'system', content: systemFor(task) }, ...messages],
-      }),
-      }, timeoutForTask(task))
-    } catch {
-      failures.push(`${model}:timeout`)
-      continue
-    }
+    const modes = JSON_TASKS.has(task) ? ['json', 'prompt'] : ['plain']
 
-    if (!response.ok) {
-      failures.push(`${model}:${response.status}`)
-      continue
-    }
+    for (const mode of modes) {
+      let response: Response
+      try {
+        const system = mode === 'prompt'
+          ? `${systemFor(task)} Responda exclusivamente com JSON valido, sem markdown e sem comentarios fora do JSON.`
+          : systemFor(task)
 
-    const body = await response.json()
-    const text = body?.choices?.[0]?.message?.content
-    if (isValidForTask(text, task)) return { text: cleanResponse(text), provider: 'openrouter', model }
-    failures.push(`${model}:${text ? 'invalid-json' : 'empty'}`)
+        response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`, 'Content-Type': 'application/json',
+          'HTTP-Referer': Deno.env.get('OPENROUTER_REFERER') ?? 'https://concurseiro-pro.vercel.app',
+          'X-Title': 'ConcurseiroPro',
+        },
+        body: JSON.stringify({
+          model, temperature: task === 'tutor' ? 0.35 : 0.15, max_tokens: maxTokens,
+          ...(mode === 'json' ? { response_format: { type: 'json_object' } } : {}),
+          messages: [{ role: 'system', content: system }, ...messages],
+        }),
+        }, timeoutForTask(task))
+      } catch {
+        failures.push(`${model}:${mode}:timeout`)
+        continue
+      }
+
+      if (!response.ok) {
+        const body = await readErrorBody(response)
+        failures.push(shortFailure(`${model}:${mode}`, response.status, body))
+        if (isAccountOrLimitFailure(response.status, body)) return null
+        continue
+      }
+
+      const body = await response.json()
+      const text = body?.choices?.[0]?.message?.content
+      if (isValidForTask(text, task)) return { text: cleanResponse(text), provider: 'openrouter', model }
+      failures.push(`${model}:${mode}:${text ? 'invalid-json' : 'empty'}`)
+    }
   }
 
   throw new Error(`OpenRouter indisponível (${failures.join(', ')}).`)
