@@ -521,9 +521,6 @@ async function callOpenRouter(payload: EditalAiPayload): Promise<ProviderExtract
       if (!response.ok) {
         const body = await readErrorBody(response)
         failures.push(shortFailure(`${model}:${mode}`, response.status, body))
-        if (isAccountOrLimitFailure(response.status, body)) {
-          throw new Error(`OpenRouter retornou erro de conta/limite (${failures.join(', ')}).`)
-        }
         continue
       }
 

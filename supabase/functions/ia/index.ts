@@ -205,7 +205,6 @@ async function openRouter(messages: Message[], task: string, maxTokens: number) 
       if (!response.ok) {
         const body = await readErrorBody(response)
         failures.push(shortFailure(`${model}:${mode}`, response.status, body))
-        if (isAccountOrLimitFailure(response.status, body)) return null
         continue
       }
 
