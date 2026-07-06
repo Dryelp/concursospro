@@ -190,6 +190,7 @@ Regras:
 - respeite fielmente o formato da banca informado acima;
 - varie dificuldade e forma de cobranca dentro do estilo da banca;
 - explique por que a correta esta correta e por que a pegadinha pode confundir;
+- todas as questoes devem ter correctAnswer e explanation preenchidos; nunca deixe esses campos vazios ou ausentes;
 - se a questao usar palavra destacada, grifada, sublinhada, em destaque ou em negrito, marque obrigatoriamente o termo com **dois asteriscos** no enunciado ou na alternativa. Exemplo: "A palavra **rapidamente** indica circunstancia de modo.";
 
 Retorne somente JSON valido, sem Markdown, sem texto antes ou depois.

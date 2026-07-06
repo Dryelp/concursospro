@@ -109,6 +109,7 @@ Regras:
 - respeite fielmente o formato e o estilo da banca informado acima;
 - varie dificuldade e forma de cobranca;
 - explique por que a correta esta correta e por que a pegadinha pode confundir.
+- todas as questoes devem ter correctAnswer e explanation preenchidos; nunca deixe esses campos vazios ou ausentes;
 - se a questao usar palavra destacada, grifada, sublinhada, em destaque ou em negrito, marque obrigatoriamente o termo com **dois asteriscos** no enunciado ou na alternativa. Exemplo: "A palavra **rapidamente** indica circunstancia de modo.";
 
 FORMATO OBRIGATORIO:
@@ -266,6 +267,7 @@ Regras:
 - nao repita enunciado, caso pratico, pegadinha ou alternativa das questoes recentes;
 - respeite o formato da banca e a quantidade de alternativas;
 - explique a regra cobrada e por que o distrator principal confunde;
+- todas as questoes devem ter subjectName, statement, alternatives, correctAnswer e explanation preenchidos;
 - se houver palavra destacada, grifada, sublinhada, em destaque ou em negrito, marque o termo com **dois asteriscos**.
 
 Retorne somente JSON valido.
