@@ -3,12 +3,14 @@ import {
   BookOpenCheck,
   CheckCircle2,
   CircleHelp,
+  Clock3,
   FileQuestion,
   ListFilter,
   Percent,
   Target,
   XCircle,
 } from 'lucide-react'
+import Link from 'next/link'
 
 import { SectionEmpty } from '@/components/section-empty'
 import { FullSimulationGenerator } from '@/app/(app)/simulados/full-simulation-generator'
@@ -17,7 +19,7 @@ import {
   type SimulationSubjectOption,
 } from '@/app/(app)/simulados/generator'
 import { QuestionList } from '@/app/(app)/simulados/question-list'
-import type { MockQuestion, Subject } from '@/lib/database.types'
+import type { MockQuestion, MockSimulation, Subject } from '@/lib/database.types'
 import { normalizeSubjectName, resolveExamStructure, type ExamStructure } from '@/lib/exam-structure'
 import { subjectColor } from '@/lib/format'
 import { requireWorkspace } from '@/lib/workspace'
@@ -32,6 +34,7 @@ type SubjectPerformance = {
 }
 
 type SubjectStatsRow = Pick<MockQuestion, 'subject_id' | 'is_correct'>
+type SimulationStatsQuestion = Pick<MockQuestion, 'simulation_id' | 'is_correct' | 'answered_at'>
 
 function percent(part: number, total: number) {
   if (!total) return 0
@@ -107,6 +110,25 @@ function buildSimulationSubjects(
   return options
 }
 
+function simulationStatusLabel(status: MockSimulation['status']) {
+  const labels: Record<MockSimulation['status'], string> = {
+    generating: 'Gerando',
+    not_started: 'Pronto',
+    in_progress: 'Em andamento',
+    completed: 'Finalizado',
+    failed: 'Falhou',
+  }
+
+  return labels[status]
+}
+
+function simulationStatusTone(status: MockSimulation['status']) {
+  if (status === 'completed') return 'border-atlas-green/20 bg-atlas-green/10 text-atlas-green'
+  if (status === 'failed') return 'border-atlas-red/20 bg-atlas-red/10 text-atlas-red'
+  if (status === 'in_progress') return 'border-atlas-yellow/20 bg-atlas-yellow/10 text-atlas-yellow'
+  return 'border-atlas-400/20 bg-atlas-400/10 text-atlas-300'
+}
+
 function MetricCard({
   icon: Icon,
   label,
@@ -162,7 +184,7 @@ function ModeCard({
 export default async function SimuladosPage({
   searchParams,
 }: {
-  searchParams: { projeto?: string }
+  searchParams: { projeto?: string; simulado?: string }
 }) {
   const { supabase, user, project, subjects } = await requireWorkspace(
     searchParams.projeto,
@@ -185,12 +207,16 @@ export default async function SimuladosPage({
     { count: pendingCount },
     { data: answeredStatsRows },
     { data: extractionRows },
+    { data: simulationRows },
+    { data: simulationStatsRows },
+    { data: activeSimulationRows },
   ] = await Promise.all([
     supabase
       .from('mock_questions')
       .select('*')
       .eq('project_id', project.id)
       .eq('user_id', user.id)
+      .is('simulation_id', null)
       .is('answered_at', null)
       .order('created_at', { ascending: false })
       .limit(40),
@@ -199,6 +225,7 @@ export default async function SimuladosPage({
       .select('*')
       .eq('project_id', project.id)
       .eq('user_id', user.id)
+      .is('simulation_id', null)
       .not('answered_at', 'is', null)
       .order('answered_at', { ascending: false })
       .limit(100),
@@ -207,24 +234,28 @@ export default async function SimuladosPage({
       .select('id', { count: 'exact', head: true })
       .eq('project_id', project.id)
       .eq('user_id', user.id)
+      .is('simulation_id', null)
       .not('answered_at', 'is', null),
     supabase
       .from('mock_questions')
       .select('id', { count: 'exact', head: true })
       .eq('project_id', project.id)
       .eq('user_id', user.id)
+      .is('simulation_id', null)
       .eq('is_correct', true),
     supabase
       .from('mock_questions')
       .select('id', { count: 'exact', head: true })
       .eq('project_id', project.id)
       .eq('user_id', user.id)
+      .is('simulation_id', null)
       .is('answered_at', null),
     supabase
       .from('mock_questions')
       .select('subject_id, is_correct')
       .eq('project_id', project.id)
       .eq('user_id', user.id)
+      .is('simulation_id', null)
       .not('answered_at', 'is', null)
       .limit(5000),
     supabase
@@ -234,6 +265,27 @@ export default async function SimuladosPage({
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(1),
+    supabase
+      .from('mock_simulations')
+      .select('*')
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(12),
+    supabase
+      .from('mock_questions')
+      .select('simulation_id, is_correct, answered_at')
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .not('simulation_id', 'is', null)
+      .limit(5000),
+    supabase
+      .from('mock_questions')
+      .select('*')
+      .eq('project_id', project.id)
+      .eq('user_id', user.id)
+      .eq('simulation_id', searchParams.simulado ?? '00000000-0000-0000-0000-000000000000')
+      .order('created_at', { ascending: true }),
   ])
 
   const pending = (pendingRows ?? []) as MockQuestion[]
@@ -247,6 +299,10 @@ export default async function SimuladosPage({
   const structuredData = Array.isArray(extractionRows) ? extractionRows[0]?.structured_data : null
   const examStructure = resolveExamStructure(structuredData, subjects, project.board)
   const simulationSubjects = buildSimulationSubjects(subjects, examStructure)
+  const simulations = (simulationRows ?? []) as MockSimulation[]
+  const simulationStats = (simulationStatsRows ?? []) as SimulationStatsQuestion[]
+  const activeSimulation = simulations.find((simulation) => simulation.id === searchParams.simulado) ?? null
+  const activeSimulationQuestions = (activeSimulationRows ?? []) as MockQuestion[]
 
   return (
     <div className="dashboard-reveal space-y-5">
@@ -337,6 +393,16 @@ export default async function SimuladosPage({
                   statement: question.statement,
                 }))}
               />
+              {activeSimulation ? (
+                <QuestionList
+                  questions={activeSimulationQuestions}
+                  examBoard={project.board}
+                  title={activeSimulation.title}
+                  description="Prova isolada: estas questoes pertencem apenas a este simulado completo."
+                  emptyTitle="Simulado sem questoes"
+                  emptyDescription="Se a geracao falhou, crie um novo simulado completo pela matriz do edital."
+                />
+              ) : null}
               <QuestionList
                 questions={pending}
                 examBoard={project.board}
@@ -359,6 +425,60 @@ export default async function SimuladosPage({
             projectId={project.id}
             examStructure={examStructure}
           />
+
+          <section className="dashboard-panel">
+            <p className="dashboard-eyebrow">Provas isoladas</p>
+            <h3 className="mt-1 font-display text-lg font-extrabold text-white">
+              Simulados gerados
+            </h3>
+            <div className="mt-5 space-y-3">
+              {simulations.length ? (
+                simulations.map((simulation) => {
+                  const rows = simulationStats.filter((question) => question.simulation_id === simulation.id)
+                  const answeredSimulationQuestions = rows.filter((question) => question.answered_at).length
+                  const correctSimulationQuestions = rows.filter((question) => question.is_correct).length
+                  const totalSimulationQuestions = simulation.total_questions || rows.length
+                  const progress = percent(answeredSimulationQuestions, totalSimulationQuestions)
+                  const href = `/simulados?projeto=${project.id}&simulado=${simulation.id}`
+
+                  return (
+                    <Link
+                      key={simulation.id}
+                      href={href}
+                      className={`block rounded-2xl border p-4 transition hover:border-atlas-400/50 hover:bg-white/[0.045] ${activeSimulation?.id === simulation.id ? 'border-atlas-400/40 bg-atlas-400/10' : 'border-white/10 bg-white/[0.03]'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <strong className="block truncate text-sm text-white">{simulation.title}</strong>
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                            <Clock3 className="size-3.5" />
+                            {simulation.duration_minutes ? `${simulation.duration_minutes} min` : 'Tempo a confirmar'}
+                          </p>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${simulationStatusTone(simulation.status)}`}>
+                          {simulationStatusLabel(simulation.status)}
+                        </span>
+                      </div>
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/5">
+                        <div
+                          className="h-full rounded-full bg-atlas-400"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-xs font-semibold text-slate-500">
+                        <span>{answeredSimulationQuestions}/{totalSimulationQuestions} respondidas</span>
+                        <span>{answeredSimulationQuestions ? `${percent(correctSimulationQuestions, answeredSimulationQuestions)}% acerto` : 'Nao iniciado'}</span>
+                      </div>
+                    </Link>
+                  )
+                })
+              ) : (
+                <p className="rounded-2xl border border-dashed border-white/10 p-5 text-sm leading-6 text-slate-500">
+                  Nenhum simulado completo gerado ainda. Gere a primeira prova usando a matriz do edital.
+                </p>
+              )}
+            </div>
+          </section>
 
           <section className="dashboard-panel">
             <p className="dashboard-eyebrow">Por matéria</p>

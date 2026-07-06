@@ -92,14 +92,29 @@ export type Database = {
         type: 'file' | 'link' | 'note' | 'ai-summary'; storage_path?: string | null
         url?: string | null; content_md?: string | null
       }>
+      mock_simulations: Table<{
+        id: string; project_id: string; user_id: string; title: string
+        status: 'generating' | 'not_started' | 'in_progress' | 'completed' | 'failed'
+        total_questions: number; duration_minutes: number | null; exam_format: string
+        distribution: Json; score: number | null; started_at: string | null
+        completed_at: string | null; created_at: string; updated_at: string
+      }, {
+        id?: string; project_id: string; user_id: string; title: string
+        status?: 'generating' | 'not_started' | 'in_progress' | 'completed' | 'failed'
+        total_questions?: number; duration_minutes?: number | null; exam_format?: string
+        distribution?: Json; score?: number | null; started_at?: string | null
+        completed_at?: string | null; updated_at?: string
+      }>
       mock_questions: Table<{
         id: string; project_id: string; subject_id: string | null; user_id: string
+        simulation_id: string | null
         statement: string; alternatives: Json; correct_answer: string; explanation: string | null
         difficulty: 'facil' | 'medio' | 'dificil'; topic: string | null
         selected_answer: string | null; is_correct: boolean | null; answered_at: string | null
         created_at: string; updated_at: string
       }, {
         id?: string; project_id: string; subject_id?: string | null; user_id: string
+        simulation_id?: string | null
         statement: string; alternatives: Json; correct_answer: string; explanation?: string | null
         difficulty?: 'facil' | 'medio' | 'dificil'; topic?: string | null
         selected_answer?: string | null; is_correct?: boolean | null; answered_at?: string | null
@@ -128,5 +143,6 @@ export type StudyTask = Database['public']['Tables']['study_tasks']['Row']
 export type ReviewItem = Database['public']['Tables']['review_items']['Row']
 export type Flashcard = Database['public']['Tables']['flashcards']['Row']
 export type Material = Database['public']['Tables']['materials']['Row']
+export type MockSimulation = Database['public']['Tables']['mock_simulations']['Row']
 export type MockQuestion = Database['public']['Tables']['mock_questions']['Row']
 export type ChatMessage = Database['public']['Tables']['chat_messages']['Row']
