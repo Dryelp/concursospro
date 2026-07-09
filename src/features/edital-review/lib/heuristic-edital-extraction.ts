@@ -366,11 +366,14 @@ function extractExamStructure(lines: string[], subjects: Array<{ role: string | 
   const explicitTotal = joined.match(/total(?:\s+de)?[^0-9]{0,40}(\d{1,3})\s*(?:quest(?:ao|oes|ões)|itens?)/i)?.[1]
   const summedTotal = disciplines.reduce((sum, item) => sum + (item.questionCount ?? 0), 0)
   const totalQuestions = explicitTotal ? Number(explicitTotal) : summedTotal || null
+  const normalizedJoined = normalizeForCompare(joined)
   const format = /certo\s*\/?\s*errado|certo ou errado/i.test(joined)
     ? 'true_false'
-    : /multipla escolha|múltipla escolha|alternativas|letras?\s+[a-e]/i.test(joined)
-      ? 'multiple_choice_a_e'
-      : 'unknown'
+    : /\b(4|quatro)\s+alternativas\b|letras?\s+a\s*(?:a|ate)\s*d|alternativas?\s+a\s*(?:a|ate)\s*d/.test(normalizedJoined)
+      ? 'multiple_choice_a_d'
+      : /multipla escolha|multiplas escolhas|alternativas|letras?\s+a\s*(?:a|ate)\s*e/.test(normalizedJoined)
+        ? 'multiple_choice_a_e'
+        : 'unknown'
 
   return {
     totalQuestions,

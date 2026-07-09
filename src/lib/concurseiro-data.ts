@@ -463,6 +463,7 @@ function buildSubjectDrafts(
   for (const discipline of extraction.examStructure.disciplines) {
     if (!discipline.name || isSelectionPhase(discipline.name)) continue
     const syllabus = findSyllabusForMatrixDiscipline(extraction, discipline.name)
+    if (!syllabus.length && isBroadSubjectName(discipline.name)) continue
     addSubject(discipline.name, syllabus.length ? syllabus : [])
   }
 

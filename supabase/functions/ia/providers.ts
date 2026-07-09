@@ -54,8 +54,14 @@ function isAccountOrLimitFailure(status: number, body: string) {
 }
 
 const contentProgramKeywords = [
+  'anexo i',
+  'anexo ii',
+  'anexo iii',
+  'anexo unico',
   'conteudo programatico',
   'conteudos programaticos',
+  'conteúdo programático',
+  'conteúdos programáticos',
   'programa da prova',
   'programa de prova',
   'programas de prova',
@@ -132,10 +138,10 @@ function buildRelevantTextBlock(textContent: string): string {
   const contentIndexes = findKeywordIndexes(lines, contentProgramKeywords)
   const structureIndexes = findKeywordIndexes(lines, examStructureKeywords)
   const contentBlock = contentIndexes.length
-    ? collectWindows(lines, contentIndexes.slice(0, 12), 10, 420)
+    ? collectWindows(lines, contentIndexes.slice(0, 24), 14, 620)
     : lines.slice(-900).map((line, index) => `${Math.max(1, lines.length - 900) + index}: ${line}`).join('\n')
   const structureBlock = structureIndexes.length
-    ? collectWindows(lines, structureIndexes.slice(0, 12), 10, 160)
+    ? collectWindows(lines, structureIndexes.slice(0, 18), 14, 220)
     : lines.slice(0, 260).map((line, index) => `${index + 1}: ${line}`).join('\n')
 
   const sections: string[] = []

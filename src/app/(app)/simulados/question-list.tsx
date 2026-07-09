@@ -19,6 +19,7 @@ type LocalAnswer = { selectedAnswer: string; answeredAt: string }
 type QuestionListProps = {
   questions: MockQuestion[]
   examBoard: string | null
+  eyebrow?: string
   title: string
   description: string
   emptyTitle: string
@@ -320,6 +321,7 @@ function AtlasQuestionHelp({
 export function QuestionList({
   questions,
   examBoard,
+  eyebrow = 'Questões pendentes',
   title,
   description,
   emptyTitle,
@@ -369,7 +371,7 @@ export function QuestionList({
     <section className="dashboard-panel">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="dashboard-eyebrow">Questões pendentes</p>
+          <p className="dashboard-eyebrow">{eyebrow}</p>
           <h3 className="mt-1 font-display text-lg font-extrabold text-white">{title}</h3>
           <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
         </div>

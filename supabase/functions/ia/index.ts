@@ -100,11 +100,14 @@ function systemFor(task: string) {
 function geminiModels(task: string) {
   const taskModel = Deno.env.get(`GEMINI_${task.toUpperCase()}_MODEL`)?.trim()
   const configured = Deno.env.get('GEMINI_MODEL')?.trim()
+  const defaults = task === 'questao'
+    ? ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']
+    : ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
+
   return [
     taskModel,
     configured,
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
+    ...defaults,
   ].filter((model, index, models): model is string =>
     Boolean(model) && models.indexOf(model) === index
   )
@@ -166,10 +169,10 @@ async function openRouter(messages: Message[], task: string, maxTokens: number) 
   const models = [
     taskModel,
     configured,
-    'google/gemini-2.5-flash-lite',
-    'deepseek/deepseek-chat-v3-0324:free',
     'deepseek/deepseek-chat-v3-0324',
     'deepseek/deepseek-chat',
+    'deepseek/deepseek-chat-v3-0324:free',
+    'google/gemini-2.5-flash-lite',
   ].filter((model, index, list): model is string =>
     Boolean(model) && list.indexOf(model) === index
   )
@@ -252,7 +255,7 @@ Deno.serve(async (request) => {
 
     const messages: Message[] = Array.isArray(body.messages) ? body.messages : []
     const task = typeof body.task === 'string' ? body.task : 'general'
-    const maxTokens = Math.min(8000, Math.max(32, Number(body.max_tokens) || 2000))
+    const maxTokens = Math.min(16000, Math.max(32, Number(body.max_tokens) || 2000))
     if (!messages.length) return json({ error: 'Envie ao menos uma mensagem.' }, 400)
 
     let result = null

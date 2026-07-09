@@ -8,6 +8,7 @@ import {
   ListFilter,
   Percent,
   Target,
+  X,
   XCircle,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -285,6 +286,7 @@ export default async function SimuladosPage({
       .eq('project_id', project.id)
       .eq('user_id', user.id)
       .eq('simulation_id', searchParams.simulado ?? '00000000-0000-0000-0000-000000000000')
+      .order('simulation_order', { ascending: true })
       .order('created_at', { ascending: true }),
   ])
 
@@ -303,6 +305,10 @@ export default async function SimuladosPage({
   const simulationStats = (simulationStatsRows ?? []) as SimulationStatsQuestion[]
   const activeSimulation = simulations.find((simulation) => simulation.id === searchParams.simulado) ?? null
   const activeSimulationQuestions = (activeSimulationRows ?? []) as MockQuestion[]
+  const activeAnswered = activeSimulationQuestions.filter((question) => question.answered_at).length
+  const activeCorrect = activeSimulationQuestions.filter((question) => question.is_correct).length
+  const activeTotal = activeSimulation?.total_questions || activeSimulationQuestions.length
+  const activeProgress = percent(activeAnswered, activeTotal)
 
   return (
     <div className="dashboard-reveal space-y-5">
@@ -393,19 +399,10 @@ export default async function SimuladosPage({
                   statement: question.statement,
                 }))}
               />
-              {activeSimulation ? (
-                <QuestionList
-                  questions={activeSimulationQuestions}
-                  examBoard={project.board}
-                  title={activeSimulation.title}
-                  description="Prova isolada: estas questoes pertencem apenas a este simulado completo."
-                  emptyTitle="Simulado sem questoes"
-                  emptyDescription="Se a geracao falhou, crie um novo simulado completo pela matriz do edital."
-                />
-              ) : null}
               <QuestionList
                 questions={pending}
                 examBoard={project.board}
+                eyebrow="Banco de questões"
                 title="Questões pendentes"
                 description="Questões ainda sem resposta deste concurso."
                 emptyTitle="Nenhuma questão pendente"
@@ -520,6 +517,71 @@ export default async function SimuladosPage({
           </section>
         </aside>
       </section>
+
+      {activeSimulation ? (
+        <div className="fixed inset-0 z-50 bg-ink-950/85 px-3 py-4 backdrop-blur-xl sm:px-6">
+          <div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-ink-950 shadow-2xl shadow-black/50">
+            <header className="border-b border-white/10 bg-white/[0.035] p-4 sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <p className="dashboard-eyebrow">Simulado completo</p>
+                  <h3 className="mt-1 truncate font-display text-xl font-extrabold text-white sm:text-2xl">
+                    {activeSimulation.title}
+                  </h3>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                    Prova isolada, ordenada pela matriz do edital. As respostas daqui nao se misturam com a fila de questoes por topico.
+                  </p>
+                </div>
+                <Link
+                  href={`/simulados?projeto=${project.id}`}
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:border-atlas-400/40 hover:text-white"
+                  aria-label="Fechar simulado"
+                >
+                  <X className="size-5" />
+                </Link>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-ink-900/70 p-4">
+                  <p className="dashboard-eyebrow">Progresso</p>
+                  <strong className="mt-1 block text-2xl text-white">{activeProgress}%</strong>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/5">
+                    <div className="h-full rounded-full bg-atlas-400" style={{ width: `${activeProgress}%` }} />
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-ink-900/70 p-4">
+                  <p className="dashboard-eyebrow">Respondidas</p>
+                  <strong className="mt-1 block text-2xl text-white">
+                    {activeAnswered}/{activeTotal}
+                  </strong>
+                  <p className="mt-2 text-xs text-slate-500">Total esperado da prova.</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-ink-900/70 p-4">
+                  <p className="dashboard-eyebrow">Acerto parcial</p>
+                  <strong className="mt-1 block text-2xl text-white">
+                    {activeAnswered ? `${percent(activeCorrect, activeAnswered)}%` : '0%'}
+                  </strong>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {activeCorrect} acertos registrados.
+                  </p>
+                </div>
+              </div>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+              <QuestionList
+                questions={activeSimulationQuestions}
+                examBoard={project.board}
+                eyebrow="Prova em andamento"
+                title="Questões do simulado"
+                description="Responda na ordem da prova. A explicacao permanece visivel depois da resposta."
+                emptyTitle="Simulado sem questoes"
+                emptyDescription="Se a geracao falhou, crie um novo simulado completo pela matriz do edital."
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

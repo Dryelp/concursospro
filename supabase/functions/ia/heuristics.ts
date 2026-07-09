@@ -252,11 +252,15 @@ function extractExamStructure(lines: string[], subjects: Array<{ role: string | 
     .match(/total(?:\s+de)?[^0-9]{0,40}(\d{1,3})\s*(?:quest(?:ao|oes|ões)|itens?)/i)?.[1]
   const summedTotal = disciplines.reduce((sum, item) => sum + (item.questionCount ?? 0), 0)
   const totalQuestions = explicitTotal ? Number(explicitTotal) : summedTotal || null
-  const format = /certo\s*\/?\s*errado|certo ou errado/i.test(windows.join(' '))
+  const joinedWindows = windows.join(' ')
+  const normalizedWindows = normalizeForCompare(joinedWindows)
+  const format = /certo\s*\/?\s*errado|certo ou errado/i.test(joinedWindows)
     ? 'true_false'
-    : /multipla escolha|múltipla escolha|alternativas|letras?\s+[a-e]/i.test(windows.join(' '))
-      ? 'multiple_choice_a_e'
-      : 'unknown'
+    : /\b(4|quatro)\s+alternativas\b|letras?\s+a\s*(?:a|ate)\s*d|alternativas?\s+a\s*(?:a|ate)\s*d/.test(normalizedWindows)
+      ? 'multiple_choice_a_d'
+      : /multipla escolha|multiplas escolhas|alternativas|letras?\s+a\s*(?:a|ate)\s*e/.test(normalizedWindows)
+        ? 'multiple_choice_a_e'
+        : 'unknown'
 
   return {
     totalQuestions,
