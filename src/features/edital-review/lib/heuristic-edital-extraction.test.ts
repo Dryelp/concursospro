@@ -78,6 +78,33 @@ NOÇÕES DE INFORMÁTICA: Sistemas operacionais; Internet; Segurança da informa
     ])
   })
 
+  it('prefere o anexo II real em vez da primeira mencao ao conteudo programatico', () => {
+    const extraction = extractEditalHeuristically({
+      fileName: 'edital.pdf',
+      classification: undefined,
+      textContent: `
+8.2 Do Conteudo Programatico
+8.2.1 O conteudo programatico para as provas objetivas esta disponibilizado no Anexo II deste Edital.
+8.2.3 As novas regras ortograficas serao utilizadas nos enunciados.
+9 DA SEGUNDA FASE - TESTE DE CAPACITACAO FISICA
+Corrida; Flexao; Natacao.
+
+ANEXO II - CONTEUDO PROGRAMATICO
+LINGUA PORTUGUESA: Compreensao e interpretacao de textos; Ortografia oficial; Coesao textual.
+RACIOCINIO LOGICO E MATEMATICO: Operacoes com conjuntos; Problemas aritmeticos; Problemas geometricos.
+NOCOES DE DIREITOS HUMANOS E LEGISLACAO: Declaracao Universal dos Direitos Humanos; Constituicao Federal; Estatuto dos Militares.
+`,
+    })
+
+    expect(extraction.subjects.map((subject) => subject.role)).toEqual([
+      'LINGUA PORTUGUESA',
+      'RACIOCINIO LOGICO E MATEMATICO',
+      'NOCOES DE DIREITOS HUMANOS E LEGISLACAO',
+    ])
+    expect(extraction.subjects[0].topics).toContain('Compreensao e interpretacao de textos')
+    expect(JSON.stringify(extraction.subjects)).not.toMatch(/corrida|flexao|natacao/i)
+  })
+
   it('extrai estrutura da prova objetiva quando houver distribuicao por disciplina', () => {
     const extraction = extractEditalHeuristically({
       fileName: 'edital.pdf',

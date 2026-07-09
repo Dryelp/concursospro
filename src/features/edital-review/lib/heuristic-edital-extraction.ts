@@ -269,6 +269,28 @@ function isProgramContentHeading(value: string): boolean {
   return /conteudo programatico|conteudos programaticos|programa da prova|programa de prova|programas de prova|conteudo da prova|conteudo das provas|conhecimentos gerais|conhecimentos especificos|objetos de avaliacao|disciplinas cobradas|materias cobradas/.test(normalized)
 }
 
+function programContentHeadingScore(value: string): number {
+  const normalized = normalizeForCompare(value)
+  const startsAnexoIi = /^anexo\s+ii\b/.test(normalized)
+  const hasContent = /conteudo programatico|conteudos programaticos|programa da prova|objetos de avaliacao/.test(normalized)
+  const isShortHeading = normalized.length <= 140
+
+  if (startsAnexoIi && hasContent) return 0
+  if (hasContent && isShortHeading) return 1
+  if (normalized.includes('anexo ii') && hasContent) return 2
+  if (hasContent) return 4
+  return 99
+}
+
+function findProgramContentHeadingIndex(lines: string[]): number {
+  const candidate = lines
+    .map((line, index) => ({ index, score: programContentHeadingScore(line) }))
+    .filter(({ score }) => score < 99)
+    .sort((left, right) => left.score - right.score || left.index - right.index)[0]
+
+  return candidate?.index ?? -1
+}
+
 function isExamStructureHeading(value: string): boolean {
   const normalized = normalizeForCompare(value)
   return /quadro de provas|tabela de provas|prova objetiva|provas objetivas|composicao da prova|numero de questoes|quantidade de questoes|pontuacao|duracao da prova|valor por questao|carater eliminatorio|estrutura da prova/.test(normalized)
@@ -396,7 +418,7 @@ function splitTopics(value: string): string[] {
 }
 
 function extractSubjects(lines: string[]) {
-  const headingIndex = lines.findIndex(isProgramContentHeading)
+  const headingIndex = findProgramContentHeadingIndex(lines)
 
   if (headingIndex < 0) {
     return []

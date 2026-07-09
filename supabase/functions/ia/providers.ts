@@ -54,10 +54,7 @@ function isAccountOrLimitFailure(status: number, body: string) {
 }
 
 const contentProgramKeywords = [
-  'anexo i',
   'anexo ii',
-  'anexo iii',
-  'anexo unico',
   'conteudo programatico',
   'conteudos programaticos',
   'conteúdo programático',
@@ -109,6 +106,27 @@ function findKeywordIndexes(lines: string[], keywords: string[]): number[] {
     .map(({ index }) => index)
 }
 
+function contentProgramScore(line: string): number {
+  const normalized = normalizeForCompare(line)
+  const startsAnexoIi = /^anexo\s+ii\b/.test(normalized)
+  const hasContent = /conteudo programatico|conteudos programaticos|programa da prova|objetos de avaliacao/.test(normalized)
+  const isShortHeading = normalized.length <= 140
+
+  if (startsAnexoIi && hasContent) return 0
+  if (hasContent && isShortHeading) return 1
+  if (normalized.includes('anexo ii') && hasContent) return 2
+  if (hasContent) return 4
+  return 99
+}
+
+function findContentProgramIndexes(lines: string[]): number[] {
+  return lines
+    .map((line, index) => ({ index, score: contentProgramScore(line) }))
+    .filter(({ score }) => score < 99)
+    .sort((left, right) => left.score - right.score || left.index - right.index)
+    .map(({ index }) => index)
+}
+
 function collectWindows(lines: string[], indexes: number[], before: number, after: number): string {
   const selected = new Map<number, string>()
 
@@ -135,7 +153,7 @@ function buildRelevantTextBlock(textContent: string): string {
 
   const maxChars = 180_000
   const lines = compactLines(textContent)
-  const contentIndexes = findKeywordIndexes(lines, contentProgramKeywords)
+  const contentIndexes = findContentProgramIndexes(lines)
   const structureIndexes = findKeywordIndexes(lines, examStructureKeywords)
   const contentBlock = contentIndexes.length
     ? collectWindows(lines, contentIndexes.slice(0, 24), 14, 620)
@@ -284,6 +302,24 @@ function isUsefulSubject(subject: EditalExtraction['subjects'][number]): boolean
   return Boolean(subject.role || topics.length) && topics.length > 0
 }
 
+function subjectQuality(subjects: EditalExtraction['subjects']): number {
+  return subjects.reduce((score, subject) => {
+    const topics = subject.topics.filter(isStudyTopic)
+    return score + 2 + topics.length
+  }, 0)
+}
+
+function isExtractionRichEnough(extraction: EditalExtraction, subjects: EditalExtraction['subjects']): boolean {
+  const topicCount = subjects.reduce((sum, subject) => sum + subject.topics.filter(isStudyTopic).length, 0)
+  const matrixCount = extraction.examStructure.disciplines.filter((discipline) => (discipline.questionCount ?? 0) > 0).length
+
+  if (matrixCount >= 4) {
+    return subjects.length >= Math.min(4, matrixCount) && topicCount >= 10
+  }
+
+  return subjects.length > 0 && topicCount >= Math.max(2, subjects.length)
+}
+
 function sanitizeExtractionSubjects(
   extraction: EditalExtraction,
   fallback: EditalExtraction | null | undefined,
@@ -311,16 +347,31 @@ function sanitizeExtractionSubjects(
     })
     .filter(isUsefulSubject)
 
-  if (cleanedSubjects.length > 0) {
-    return { ...extraction, subjects: cleanedSubjects }
-  }
-
   const fallbackSubjects = fallback?.subjects
     .map((subject) => ({
       ...subject,
       topics: subject.topics.filter((topic) => !isSelectionPhase(topic) && isStudyTopic(topic)),
     }))
     .filter(isUsefulSubject)
+
+  if (
+    fallbackSubjects?.length &&
+    (!isExtractionRichEnough(extraction, cleanedSubjects) ||
+      subjectQuality(fallbackSubjects) > subjectQuality(cleanedSubjects))
+  ) {
+    return {
+      ...extraction,
+      subjects: fallbackSubjects,
+      warnings: [
+        ...extraction.warnings,
+        'Provider retornou conteudo programatico pobre; usando extracao heuristica do Anexo II.',
+      ],
+    }
+  }
+
+  if (isExtractionRichEnough(extraction, cleanedSubjects)) {
+    return { ...extraction, subjects: cleanedSubjects }
+  }
 
   if (fallbackSubjects?.length) {
     return {
@@ -335,10 +386,10 @@ function sanitizeExtractionSubjects(
 
   return {
     ...extraction,
-    subjects: [],
+    subjects: cleanedSubjects,
     warnings: [
       ...extraction.warnings,
-      'Nao foi possivel confirmar conteudo programatico da prova objetiva/escrita.',
+      'Conteudo programatico extraido com baixa cobertura; revise o edital antes de gerar plano ou simulado.',
     ],
   }
 }
@@ -473,10 +524,10 @@ async function callOpenRouter(payload: EditalAiPayload): Promise<ProviderExtract
     Deno.env.get('OPENROUTER_EDITAL_MODEL')?.trim(),
     Deno.env.get('OPENROUTER_EXTRACT_MODEL')?.trim(),
     Deno.env.get('OPENROUTER_MODEL')?.trim(),
-    'google/gemini-2.5-flash-lite',
     'deepseek/deepseek-chat-v3-0324',
-    'deepseek/deepseek-chat-v3-0324:free',
     'deepseek/deepseek-chat',
+    'deepseek/deepseek-chat-v3-0324:free',
+    'google/gemini-2.5-flash-lite',
   ].filter((model, index, list): model is string =>
     Boolean(model) && list.indexOf(model) === index
   )
